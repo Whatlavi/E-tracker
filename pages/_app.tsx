@@ -6,7 +6,7 @@ function MyApp({ Component, pageProps }: AppProps) {
   return (
     <>
       <Head>
-        <title>Mi Web</title>
+        <title>E-tracker</title>
         <link rel="icon" href="/E-tracker.ico" />
       </Head>
       <Component {...pageProps} />
