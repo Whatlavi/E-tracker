@@ -16,6 +16,15 @@ interface LeagueStat {
   losses: number;
 }
 
+interface RiotLeagueEntry {
+  queueType: string;
+  tier: string;
+  rank: string;
+  leaguePoints: number;
+  wins: number;
+  losses: number;
+}
+
 interface PlayerAPIResponse {
   summoner: SummonerData;
   stats?: LeagueStat[];
@@ -23,7 +32,7 @@ interface PlayerAPIResponse {
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<PlayerAPIResponse | { error: string }>,
+  res: NextApiResponse<PlayerAPIResponse | { error: string }>
 ) {
   const { summonerName } = req.query;
 
@@ -40,14 +49,16 @@ export default async function handler(
     // 1️⃣ Obtener datos del invocador
     const summonerRes = await fetch(
       `https://euw1.api.riotgames.com/lol/summoner/v4/summoners/by-name/${encodeURIComponent(
-        summonerName,
+        summonerName
       )}`,
-      { headers: { "X-Riot-Token": RIOT_API_KEY } },
+      { headers: { "X-Riot-Token": RIOT_API_KEY } }
     );
 
     if (!summonerRes.ok) {
       const errorText = await summonerRes.text();
-      return res.status(summonerRes.status).json({ error: `Summoner not found: ${errorText}` });
+      return res
+        .status(summonerRes.status)
+        .json({ error: `Summoner not found: ${errorText}` });
     }
 
     const summonerData: SummonerData = await summonerRes.json();
@@ -55,13 +66,13 @@ export default async function handler(
     // 2️⃣ Obtener estadísticas de ranked
     const statsRes = await fetch(
       `https://euw1.api.riotgames.com/lol/league/v4/entries/by-summoner/${summonerData.id}`,
-      { headers: { "X-Riot-Token": RIOT_API_KEY } },
+      { headers: { "X-Riot-Token": RIOT_API_KEY } }
     );
 
     let statsData: LeagueStat[] = [];
     if (statsRes.ok) {
-      const rawStats = await statsRes.json();
-      statsData = rawStats.map((entry: any) => ({
+      const rawStats: RiotLeagueEntry[] = await statsRes.json();
+      statsData = rawStats.map((entry) => ({
         queueType: entry.queueType,
         tier: entry.tier,
         rank: entry.rank,
@@ -73,8 +84,7 @@ export default async function handler(
 
     res.status(200).json({ summoner: summonerData, stats: statsData });
   } catch (error: unknown) {
-    let message = "Unknown error";
-    if (error instanceof Error) message = error.message;
+    const message = error instanceof Error ? error.message : "Unknown error";
     res.status(500).json({ error: message });
   }
 }

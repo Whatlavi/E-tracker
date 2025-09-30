@@ -1,3 +1,4 @@
+"use client";
 import { useEffect, useState } from "react";
 
 interface SummonerData {
@@ -39,16 +40,13 @@ export default function PlayerStats({ username }: PlayerStatsProps) {
       setLoading(true);
 
       try {
-        const res = await fetch(`/api/riot/player?summonerName=${encodeURIComponent(username)}`);
+        const res = await fetch(
+          `/api/player/${encodeURIComponent(username)}`
+        );
         const json = (await res.json()) as PlayerAPIResponse | { error: string };
-
-        if ("error" in json) {
-          setError(json.error);
-        } else {
-          setData(json);
-        }
-      } catch (err) {
-        console.error(err);
+        if ("error" in json) setError(json.error);
+        else setData(json);
+      } catch {
         setError("Error fetching player");
       } finally {
         setLoading(false);
@@ -61,21 +59,20 @@ export default function PlayerStats({ username }: PlayerStatsProps) {
   if (!username) return null;
 
   return (
-    <div className="mt-4 p-4 border rounded bg-gray-50">
+    <div className="mt-4 p-4 border rounded bg-gray-50 w-full">
       {loading && <p>Cargando...</p>}
       {error && <p className="text-red-500">{error}</p>}
       {data && (
         <div>
           <h2 className="font-bold text-lg">{data.summoner.name}</h2>
           <p>Nivel: {data.summoner.summonerLevel}</p>
-
           {data.stats?.length ? (
             <div className="mt-2">
-              <h3 className="font-semibold">Rank:</h3>
               {data.stats.map((stat) => (
                 <div key={stat.queueType} className="border p-2 rounded mb-1">
                   <p>
-                    <strong>{stat.queueType}</strong>: {stat.tier} {stat.rank} ({stat.leaguePoints} LP)
+                    <strong>{stat.queueType}</strong>: {stat.tier} {stat.rank} (
+                    {stat.leaguePoints} LP)
                   </p>
                   <p>
                     Wins: {stat.wins} | Losses: {stat.losses}
