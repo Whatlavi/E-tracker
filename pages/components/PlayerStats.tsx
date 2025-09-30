@@ -2,26 +2,8 @@ import { useState } from "react";
 
 type Props = { username: string };
 
-interface LeagueStat {
-  queueType: string;
-  tier: string;
-  rank: string;
-  leaguePoints: number;
-  wins: number;
-  losses: number;
-}
-
-interface PlayerData {
-  summoner: {
-    name: string;
-    summonerLevel: number;
-  };
-  stats?: LeagueStat[];
-  totalKills?: number;
-}
-
 export default function PlayerStats({ username }: Props) {
-  const [data, setData] = useState<PlayerData | null>(null);
+  const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -31,14 +13,10 @@ export default function PlayerStats({ username }: Props) {
     try {
       const res = await fetch(`/api/player/${username}`);
       if (!res.ok) throw new Error("Jugador no encontrado");
-      const json: PlayerData = await res.json();
+      const json = await res.json();
       setData(json);
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Error desconocido");
-      }
+    } catch (err: any) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -57,15 +35,11 @@ export default function PlayerStats({ username }: Props) {
           <p>Nivel: {data.summoner.summonerLevel}</p>
 
           {/* Stats de liga */}
-          {data.stats?.map((s) => (
+          {data.stats?.map((s: any) => (
             <div key={s.queueType}>
               <h3>{s.queueType}</h3>
-              <p>
-                {s.tier} {s.rank} - {s.leaguePoints} LP
-              </p>
-              <p>
-                {s.wins}W / {s.losses}L
-              </p>
+              <p>{s.tier} {s.rank} - {s.leaguePoints} LP</p>
+              <p>{s.wins}W / {s.losses}L</p>
             </div>
           ))}
 
