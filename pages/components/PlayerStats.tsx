@@ -21,7 +21,6 @@ interface PlayerAPIResponse {
   stats?: LeagueStat[];
 }
 
-// Definimos la interfaz de props
 interface PlayerStatsProps {
   username: string;
 }
@@ -29,6 +28,7 @@ interface PlayerStatsProps {
 export default function PlayerStats({ username }: PlayerStatsProps) {
   const [data, setData] = useState<PlayerAPIResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!username) return;
@@ -36,9 +36,10 @@ export default function PlayerStats({ username }: PlayerStatsProps) {
     const fetchPlayer = async () => {
       setError(null);
       setData(null);
+      setLoading(true);
 
       try {
-        const res = await fetch(`/api/player/${username}`);
+        const res = await fetch(`/api/riot/player?summonerName=${encodeURIComponent(username)}`);
         const json = (await res.json()) as PlayerAPIResponse | { error: string };
 
         if ("error" in json) {
@@ -49,6 +50,8 @@ export default function PlayerStats({ username }: PlayerStatsProps) {
       } catch (err) {
         console.error(err);
         setError("Error fetching player");
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -58,19 +61,25 @@ export default function PlayerStats({ username }: PlayerStatsProps) {
   if (!username) return null;
 
   return (
-    <div className="mt-4">
+    <div className="mt-4 p-4 border rounded bg-gray-50">
+      {loading && <p>Cargando...</p>}
       {error && <p className="text-red-500">{error}</p>}
       {data && (
         <div>
-          <h2>{data.summoner.name}</h2>
+          <h2 className="font-bold text-lg">{data.summoner.name}</h2>
           <p>Nivel: {data.summoner.summonerLevel}</p>
 
           {data.stats?.length ? (
-            <div>
-              <h3>Rank:</h3>
+            <div className="mt-2">
+              <h3 className="font-semibold">Rank:</h3>
               {data.stats.map((stat) => (
-                <div key={stat.queueType}>
-                  {stat.queueType}: {stat.tier} {stat.rank} ({stat.leaguePoints} LP)
+                <div key={stat.queueType} className="border p-2 rounded mb-1">
+                  <p>
+                    <strong>{stat.queueType}</strong>: {stat.tier} {stat.rank} ({stat.leaguePoints} LP)
+                  </p>
+                  <p>
+                    Wins: {stat.wins} | Losses: {stat.losses}
+                  </p>
                 </div>
               ))}
             </div>

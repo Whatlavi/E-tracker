@@ -23,7 +23,7 @@ interface PlayerAPIResponse {
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<PlayerAPIResponse | { error: string }>
+  res: NextApiResponse<PlayerAPIResponse | { error: string }>,
 ) {
   const { summonerName } = req.query;
 
@@ -37,29 +37,39 @@ export default async function handler(
   }
 
   try {
-    // Datos del invocador
+    // 1️⃣ Obtener datos del invocador
     const summonerRes = await fetch(
       `https://euw1.api.riotgames.com/lol/summoner/v4/summoners/by-name/${encodeURIComponent(
-        summonerName
+        summonerName,
       )}`,
-      {
-        headers: { "X-Riot-Token": RIOT_API_KEY },
-      }
+      { headers: { "X-Riot-Token": RIOT_API_KEY } },
     );
 
     if (!summonerRes.ok) {
-      return res.status(summonerRes.status).json({ error: "Summoner not found" });
+      const errorText = await summonerRes.text();
+      return res.status(summonerRes.status).json({ error: `Summoner not found: ${errorText}` });
     }
 
     const summonerData: SummonerData = await summonerRes.json();
 
-    // Estadísticas del invocador
+    // 2️⃣ Obtener estadísticas de ranked
     const statsRes = await fetch(
       `https://euw1.api.riotgames.com/lol/league/v4/entries/by-summoner/${summonerData.id}`,
-      { headers: { "X-Riot-Token": RIOT_API_KEY } }
+      { headers: { "X-Riot-Token": RIOT_API_KEY } },
     );
 
-    const statsData: LeagueStat[] = statsRes.ok ? await statsRes.json() : [];
+    let statsData: LeagueStat[] = [];
+    if (statsRes.ok) {
+      const rawStats = await statsRes.json();
+      statsData = rawStats.map((entry: any) => ({
+        queueType: entry.queueType,
+        tier: entry.tier,
+        rank: entry.rank,
+        leaguePoints: entry.leaguePoints,
+        wins: entry.wins,
+        losses: entry.losses,
+      }));
+    }
 
     res.status(200).json({ summoner: summonerData, stats: statsData });
   } catch (error: unknown) {
