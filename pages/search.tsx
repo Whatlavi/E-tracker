@@ -1,47 +1,80 @@
+"use client";
 import { useState } from "react";
 
-export default function SearchSummoner() {
-  const [name, setName] = useState("");
-  const [data, setData] = useState<any>(null);
+interface SummonerData {
+  id: string;
+  name: string;
+  puuid: string;
+  summonerLevel: number;
+}
 
-  const search = async () => {
-    if (!name) return;
-    const res = await fetch(`/api/summoner/${name}`);
-    const json = await res.json();
-    setData(json);
+interface LeagueStat {
+  queueType: string;
+  tier: string;
+  rank: string;
+  leaguePoints: number;
+  wins: number;
+  losses: number;
+}
+
+interface PlayerAPIResponse {
+  summoner: SummonerData;
+  stats?: LeagueStat[];
+}
+
+export default function Search() {
+  const [name, setName] = useState<string>("");
+  const [data, setData] = useState<PlayerAPIResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSearch = async () => {
+    setError(null);
+    setData(null);
+    try {
+      const res = await fetch(`/api/summoner/${name}`);
+      const json = (await res.json()) as PlayerAPIResponse | { error: string };
+      if ("error" in json) setError(json.error);
+      else setData(json);
+    } catch (err) {
+      console.error(err);
+      setError("Error fetching summoner");
+    }
   };
 
   return (
-    <main style={{ padding: "2rem" }}>
-      <h1 style={{ fontSize: "24px", fontWeight: "bold" }}>Buscar invocador 🎮</h1>
+    <div style={{ padding: 20 }}>
+      <input
+        type="text"
+        placeholder="Summoner Name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <button onClick={handleSearch}>Search</button>
 
-      <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem" }}>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Nombre del invocador"
-          style={{ border: "1px solid #ccc", padding: "0.5rem", width: "250px" }}
-        />
-        <button
-          onClick={search}
-          style={{ padding: "0.5rem 1rem", background: "#2563eb", color: "white", border: "none", borderRadius: "4px" }}
-        >
-          Buscar
-        </button>
-      </div>
+      {error && <p style={{ color: "red" }}>{error}</p>}
 
-      {data && (
-        <pre
-          style={{
-            marginTop: "1.5rem",
-            padding: "1rem",
-            background: "#f3f4f6",
-            borderRadius: "6px",
-          }}
-        >
-          {JSON.stringify(data, null, 2)}
-        </pre>
+      {data && data.stats && data.stats.length > 0 && (
+        <div>
+          <h2>{data.summoner.name}</h2>
+          <p>Level: {data.summoner.summonerLevel}</p>
+          <div>
+            <h3>Rank:</h3>
+            {data.stats.map((s) => (
+              <div key={s.queueType}>
+                {s.queueType}: {s.tier} {s.rank} ({s.leaguePoints} LP)
+              </div>
+            ))}
+          </div>
+        </div>
       )}
-    </main>
+
+      {data && (!data.stats || data.stats.length === 0) && (
+        <div>
+          <h2>{data.summoner.name}</h2>
+          <p>Level: {data.summoner.summonerLevel}</p>
+          <p>No ranked stats available</p>
+        </div>
+      )}
+    </div>
   );
 }

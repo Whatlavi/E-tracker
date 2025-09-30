@@ -1,66 +1,35 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import cookie from "cookie";
-import fetch from "node-fetch";
 
-interface SummonerData {
-  id: string;
-  name: string;
-  puuid: string;
-  summonerLevel: number;
-}
+interface SummonerData { id: string; name: string; puuid: string; summonerLevel: number; }
+interface LeagueStat { queueType: string; tier: string; rank: string; leaguePoints: number; wins: number; losses: number; }
+interface PlayerAPIResponse { summoner: SummonerData; stats?: LeagueStat[]; }
 
-interface LeagueStat {
-  queueType: string;
-  tier: string;
-  rank: string;
-  leaguePoints: number;
-  wins: number;
-  losses: number;
-}
-
-interface PlayerAPIResponse {
-  summoner: SummonerData;
-  stats?: LeagueStat[];
-}
-
-const RIOT_API_KEY = process.env.RIOT_API_KEY!;
-
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<PlayerAPIResponse | { error: string }>
-) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse<PlayerAPIResponse | { error: string }>) {
   const { summonerName } = req.query;
+  if (!summonerName || typeof summonerName !== "string") return res.status(400).json({ error: "Summoner name is required" });
 
-  if (!summonerName || typeof summonerName !== "string") {
-    return res.status(400).json({ error: "Summoner name is required" });
-  }
+  const RIOT_API_KEY = process.env.RIOT_API_KEY;
+  if (!RIOT_API_KEY) return res.status(500).json({ error: "Riot API key not configured" });
 
   try {
-    const rawCookies = req.headers.cookie || "";
-    const cookies = cookie.parse(rawCookies);
-    const token = cookies.riot_token;
-
-    const headers: Record<string, string> = token
-      ? { Authorization: `Bearer ${token}` }
-      : { "X-Riot-Token": RIOT_API_KEY };
-
     const summonerRes = await fetch(
       `https://euw1.api.riotgames.com/lol/summoner/v4/summoners/by-name/${encodeURIComponent(summonerName)}`,
-      { headers }
+      { headers: { "X-Riot-Token": RIOT_API_KEY } }
     );
-    if (!summonerRes.ok) throw new Error("Jugador no encontrado");
-    const summonerData: SummonerData = await summonerRes.json() as SummonerData;
+    if (!summonerRes.ok) return res.status(summonerRes.status).json({ error: "Summoner not found" });
+    const summonerData: SummonerData = await summonerRes.json();
 
     const statsRes = await fetch(
       `https://euw1.api.riotgames.com/lol/league/v4/entries/by-summoner/${summonerData.id}`,
-      { headers }
+      { headers: { "X-Riot-Token": RIOT_API_KEY } }
     );
-    const statsData: LeagueStat[] = statsRes.ok ? await statsRes.json() as LeagueStat[] : [];
+    const statsData: LeagueStat[] = statsRes.ok ? await statsRes.json() : [];
 
     res.status(200).json({ summoner: summonerData, stats: statsData });
   } catch (err: unknown) {
-    let message = "Error desconocido";
+    let message = "Unknown error";
     if (err instanceof Error) message = err.message;
+    console.error(err);
     res.status(500).json({ error: message });
   }
 }
