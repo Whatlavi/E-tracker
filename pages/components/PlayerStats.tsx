@@ -1,50 +1,82 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-type Props = { username: string };
+interface SummonerData {
+  id: string;
+  name: string;
+  puuid: string;
+  summonerLevel: number;
+}
 
-export default function PlayerStats({ username }: Props) {
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+interface LeagueStat {
+  queueType: string;
+  tier: string;
+  rank: string;
+  leaguePoints: number;
+  wins: number;
+  losses: number;
+}
 
-  const fetchStats = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/player/${username}`);
-      if (!res.ok) throw new Error("Jugador no encontrado");
-      const json = await res.json();
-      setData(json);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+interface PlayerAPIResponse {
+  summoner: SummonerData;
+  stats?: LeagueStat[];
+}
+
+// Definimos la interfaz de props
+interface PlayerStatsProps {
+  username: string;
+}
+
+export default function PlayerStats({ username }: PlayerStatsProps) {
+  const [data, setData] = useState<PlayerAPIResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!username) return;
+
+    const fetchPlayer = async () => {
+      setError(null);
+      setData(null);
+
+      try {
+        const res = await fetch(`/api/player/${username}`);
+        const json = (await res.json()) as PlayerAPIResponse | { error: string };
+
+        if ("error" in json) {
+          setError(json.error);
+        } else {
+          setData(json);
+        }
+      } catch (err) {
+        console.error(err);
+        setError("Error fetching player");
+      }
+    };
+
+    fetchPlayer();
+  }, [username]);
+
+  if (!username) return null;
 
   return (
-    <div>
-      <button onClick={fetchStats}>Buscar stats</button>
-
-      {loading && <p>Cargando...</p>}
-      {error && <p>Error: {error}</p>}
-
+    <div className="mt-4">
+      {error && <p className="text-red-500">{error}</p>}
       {data && (
         <div>
           <h2>{data.summoner.name}</h2>
           <p>Nivel: {data.summoner.summonerLevel}</p>
 
-          {/* Stats de liga */}
-          {data.stats?.map((s: any) => (
-            <div key={s.queueType}>
-              <h3>{s.queueType}</h3>
-              <p>{s.tier} {s.rank} - {s.leaguePoints} LP</p>
-              <p>{s.wins}W / {s.losses}L</p>
+          {data.stats?.length ? (
+            <div>
+              <h3>Rank:</h3>
+              {data.stats.map((stat) => (
+                <div key={stat.queueType}>
+                  {stat.queueType}: {stat.tier} {stat.rank} ({stat.leaguePoints} LP)
+                </div>
+              ))}
             </div>
-          ))}
-
-          {/* Kills totales de las últimas 20 partidas */}
-          <p>Kills totales (últimas 20 partidas): {data.totalKills}</p>
+          ) : (
+            <p>Sin estadísticas disponibles</p>
+          )}
         </div>
       )}
     </div>
