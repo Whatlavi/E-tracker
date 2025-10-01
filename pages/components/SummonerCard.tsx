@@ -1,77 +1,53 @@
-import React, { useState } from "react";
+import React from "react";
 
-export default function SummonerCard() {
-  const [name, setName] = useState("");
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+// Interfaces
+interface Summoner {
+  name: string;
+  summonerLevel: number;
+  profileIconId?: number;
+}
 
-  const fetchSummoner = async () => {
-    setLoading(true);
-    setError("");
-    setData(null);
-    try {
-      const res = await fetch(`/api/riot/player?summonerName=${encodeURIComponent(name)}`);
-      const json = await res.json();
-      if (!res.ok || json.error) {
-        setError(json.error || "Error fetching summoner");
-      } else {
-        setData(json);
-      }
-    } catch (e: any) {
-      setError(e.message || "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  };
+interface LeagueStat {
+  queueType: string;
+  tier: string;
+  rank: string;
+  leaguePoints: number;
+  wins: number;
+  losses: number;
+}
 
+interface Props {
+  summoner: Summoner;
+  stats?: LeagueStat[];
+}
+
+const SummonerCard: React.FC<Props> = ({ summoner, stats }) => {
   return (
-    <div className="p-4 border rounded max-w-md mx-auto mt-6">
-      <h2 className="text-xl font-bold mb-2">Buscar Summoner</h2>
-      <div className="mb-2">
-        <input
-          type="text"
-          placeholder="Nombre del summoner"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="p-2 border rounded w-full"
+    <div className="bg-gray-900 text-white p-4 rounded shadow-md w-full max-w-md">
+      <h2 className="text-xl font-bold">{summoner.name}</h2>
+      <p>Nivel: {summoner.summonerLevel}</p>
+      {summoner.profileIconId && (
+        <img
+          src={`http://ddragon.leagueoflegends.com/cdn/13.19.1/img/profileicon/${summoner.profileIconId}.png`}
+          alt="Profile Icon"
+          className="w-16 h-16 rounded mt-2"
         />
-      </div>
-      <button
-        onClick={fetchSummoner}
-        disabled={loading || !name}
-        className="p-2 bg-blue-600 text-white rounded w-full"
-      >
-        {loading ? "Buscando..." : "Buscar"}
-      </button>
+      )}
 
-      {error && <p className="text-red-500 mt-2">{error}</p>}
-
-      {data && (
-        <div className="mt-4 p-3 border rounded bg-gray-50">
-          <h3 className="font-semibold text-lg">{data.summoner.name}</h3>
-          <p>Nivel: {data.summoner.summonerLevel}</p>
-
-          {data.stats && data.stats.length > 0 ? (
-            <div className="mt-2">
-              <h4 className="font-semibold">Ranked:</h4>
-              {data.stats.map((s: any) => (
-                <div key={s.queueType} className="border p-2 rounded mb-1">
-                  <p>Queue: {s.queueType}</p>
-                  <p>
-                    Tier: {s.tier} {s.rank} ({s.leaguePoints} LP)
-                  </p>
-                  <p>
-                    Wins: {s.wins} | Losses: {s.losses}
-                  </p>
-                </div>
-              ))}
+      {stats && stats.length > 0 ? (
+        <div className="mt-4">
+          <h3 className="font-semibold mb-2">Ranked</h3>
+          {stats.map((stat: LeagueStat) => (
+            <div key={stat.queueType} className="mb-1">
+              <strong>{stat.queueType}:</strong> {stat.tier} {stat.rank} ({stat.leaguePoints} LP) - {stat.wins}W/{stat.losses}L
             </div>
-          ) : (
-            <p>No tiene ranked</p>
-          )}
+          ))}
         </div>
+      ) : (
+        <p className="mt-2">Sin estadísticas disponibles</p>
       )}
     </div>
   );
-}
+};
+
+export default SummonerCard;

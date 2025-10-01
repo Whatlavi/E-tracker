@@ -1,33 +1,45 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
+export const dynamic = 'force-dynamic';
 
-const REGION = 'euw1';
-const RIOT_API_KEY = process.env.RIOT_API_KEY;
+import { NextApiRequest, NextApiResponse } from 'next';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const { puuid } = req.query;
-  if (!puuid) return res.status(400).json({ error: 'Falta el PUUID del invocador' });
+interface Mastery {
+  championId: number;
+  championPoints: number;
+}
+
+// Tipado crudo de Riot API
+interface RawMastery {
+  championId: number;
+  championPoints: number;
+}
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse<Mastery[] | { error: string }>) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Método no permitido' });
+
+  const puuid = req.query.puuid;
+  if (!puuid || typeof puuid !== 'string') return res.status(400).json({ error: 'PUUID is required' });
 
   try {
-    // Obtener summonerId primero
-    const summonerRes = await fetch(
-      `https://${REGION}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${puuid}`,
-      { headers: { 'X-Riot-Token': RIOT_API_KEY! } }
-    );
-    if (!summonerRes.ok) return res.status(summonerRes.status).json({ error: 'No se pudo obtener el summonerId' });
+    const RIOT_API_KEY = process.env.RIOT_API_KEY;
+    if (!RIOT_API_KEY) return res.status(500).json({ error: 'Riot API key not configured' });
 
-    const summonerData = await summonerRes.json();
-    const summonerId = summonerData.id;
+    const masteryRes = await fetch(`https://euw1.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-summoner/${puuid}`, {
+      headers: { 'X-Riot-Token': RIOT_API_KEY },
+    });
 
-    const masteryRes = await fetch(
-      `https://${REGION}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-summoner/${summonerId}`,
-      { headers: { 'X-Riot-Token': RIOT_API_KEY! } }
-    );
+    if (!masteryRes.ok) {
+      const text = await masteryRes.text();
+      return res.status(masteryRes.status).json({ error: `Failed to fetch champion masteries: ${text}` });
+    }
 
-    if (!masteryRes.ok) return res.status(masteryRes.status).json({ error: 'No se pudieron obtener las maestrías' });
+    const rawData: RawMastery[] = await masteryRes.json();
+    const masteries: Mastery[] = rawData.map((m) => ({
+      championId: m.championId,
+      championPoints: m.championPoints,
+    }));
 
-    const masteryData = await masteryRes.json();
-    res.status(200).json(masteryData.slice(0, 10)); // Top 10
-  } catch (err) {
-    res.status(500).json({ error: 'Error al obtener maestrías', details: err });
+    res.status(200).json(masteries.slice(0, 10));
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
   }
 }
