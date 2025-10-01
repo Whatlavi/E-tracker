@@ -1,170 +1,140 @@
-"use client";
-import { useState } from "react";
+import React, { useState, useCallback } from 'react';
+import RiotIdSearchBar from '../components/RiotIdSearchBar';
+import axios from 'axios';
+import Head from 'next/head';
 
-// --- INTERFACES DE DATOS (Necesarias para la compilación) ---
-
-interface LeagueStat {
-  queueType: string;
-  tier: string;
-  rank: string;
-  leaguePoints: number;
-  wins: number;
-  losses: number;
+// Interfaz para los datos del jugador (Simplificado)
+interface PlayerData {
+    name: string;
+    profileIconId: number;
+    summonerLevel: number;
+    puuid: string;
+    region: string;
+    ranks: any[]; // Aquí irían los datos de rank (Solo/Duo, Flex)
 }
 
-interface Mastery {
-  championId: number;
-  championPoints: number;
+// Interfaz para el estado de la aplicación
+interface AppState {
+    data: PlayerData | null;
+    loading: boolean;
+    error: string | null;
 }
 
-// Interfaz para la respuesta del invocador (viene de /api/riot/player-data.ts)
-interface SummonerData {
-  id: string;
-  name: string;
-  puuid: string;
-  summonerLevel: number;
-  profileIconId: number;
-}
+const Home: React.FC = () => {
+    const [state, setState] = useState<AppState>({
+        data: null,
+        loading: false,
+        error: null,
+    });
 
-// Interfaz para el estado completo del jugador
-interface PlayerState {
-  summoner: SummonerData;
-  stats?: LeagueStat[];
-}
+    // Función principal de búsqueda que llama al endpoint de la API
+    const handleSearch = useCallback(async (riotId: string, tagLine: string) => {
+        setState(prev => ({ ...prev, loading: true, error: null, data: null }));
 
-// --------------------------------------------------------------------
+        try {
+            // Llama a la función API en el servidor de Vercel: /api/riot/player-data
+            const response = await axios.get('/api/riot/player-data', {
+                params: {
+                    riotId,
+                    tagLine,
+                    // Se asume la región euw1 por defecto para el ejemplo
+                    regionLoL: 'euw1', 
+                }
+            });
 
-export default function Home() {
-  const [username, setUsername] = useState("");
-  const [playerData, setPlayerData] = useState<PlayerState | null>(null);
-  const [matches, setMatches] = useState<string[]>([]);
-  const [masteries, setMasteries] = useState<Mastery[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+            // Si es exitoso, actualiza los datos
+            setState({
+                data: response.data as PlayerData,
+                loading: false,
+                error: null,
+            });
 
-  const fetchData = async (cleanName: string) => {
-    if (!cleanName) return setError("Ingresa un nombre de invocador");
+        } catch (err) {
+            let errorMessage = 'Un error desconocido ocurrió.';
+            if (axios.isAxiosError(err) && err.response) {
+                // Capturamos el error enviado por el backend
+                errorMessage = err.response.data.error || errorMessage;
+            }
+            
+            setState({
+                data: null,
+                loading: false,
+                error: errorMessage,
+            });
+        }
+    }, []);
 
-    setLoading(true);
-    setError("");
-    setPlayerData(null);
-    setMatches([]);
-    setMasteries([]);
+    // Helper para mostrar la clasificación
+    const renderRanks = (ranks: any[]) => {
+        if (!ranks || ranks.length === 0) {
+            return <p className="text-gray-400 mt-2">Sin datos de clasificación en Solo/Duo o Flex.</p>;
+        }
 
-    try {
-      // 1. 🔹 Obtener datos del summoner
-      const playerRes = await fetch(`/api/riot/player-data?summoner=${cleanName}`);
+        return (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                {ranks.map((rank, index) => (
+                    <div key={index} className="bg-gray-800 p-4 rounded-lg shadow-md border-l-4 border-blue-500">
+                        <p className="font-bold text-lg text-white">{rank.queueType === 'RANKED_SOLO_5x5' ? 'Solo/Duo' : 'Flex'}</p>
+                        <p className="text-xl font-extrabold text-blue-400">{rank.tier} {rank.rank}</p>
+                        <p className="text-sm text-gray-400">{rank.leaguePoints} LP | {rank.wins}V / {rank.losses}D</p>
+                    </div>
+                ))}
+            </div>
+        );
+    };
 
-      if (!playerRes.ok) {
-        // Maneja errores 404/500 de tu API Route
-        const errorData = await playerRes.json().catch(() => ({ error: 'Error desconocido' }));
-        throw new Error(`Error al buscar invocador: ${errorData.error || playerRes.statusText}`);
-      }
-          
-      // La respuesta es directamente el objeto SummonerData
-      const summonerData: SummonerData = await playerRes.json();
-      
-      // 🚨 CORRECCIÓN CLAVE: Verifica si el PUUID existe en el objeto que viene de la API.
-      const puuid = summonerData.puuid; 
-      if (!puuid) {
-        // Este error indica que la respuesta de Riot fue extraña, aunque haya sido 200 OK.
-        throw new Error("Datos de invocador incompletos (falta PUUID).");
-      }
+    return (
+        <>
+            <Head>
+                <title>EliteGG Riot Tracker</title>
+                <script src="https://cdn.tailwindcss.com"></script>
+            </Head>
+            <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center p-4">
+                <header className="py-8 w-full max-w-4xl text-center">
+                    <h1 className="text-4xl font-extrabold text-blue-500">EliteGG Tracker 🎮</h1>
+                    <p className="mt-2 text-gray-400">Busca cualquier Riot ID (NombreDeJuego#TAG) para ver estadísticas de League of Legends.</p>
+                </header>
 
-      // Establece el estado principal con el objeto completo del invocador
-      setPlayerData({ summoner: summonerData, stats: [] }); 
+                <main className="w-full max-w-lg mb-12">
+                    {/* Componente de la barra de búsqueda */}
+                    <RiotIdSearchBar onSearch={handleSearch} loading={state.loading} />
+                </main>
 
-      // 2. 🔹 Obtener últimas partidas (usando el PUUID)
-      const matchesRes = await fetch(`/api/riot/matches?puuid=${puuid}`);
-      if (matchesRes.ok) {
-        const matchesData: string[] = await matchesRes.json();
-        setMatches(matchesData.slice(0, 10));
-      } else {
-        console.error("Fallo al cargar partidas.");
-      }
+                <section className="w-full max-w-4xl p-6 bg-gray-800 rounded-xl shadow-2xl">
+                    {state.loading && (
+                        <div className="flex justify-center items-center py-10">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mr-3"></div>
+                            <p className="text-blue-400">Buscando invocador...</p>
+                        </div>
+                    )}
 
-      // 3. 🔹 Obtener maestrías de campeón (usando el PUUID)
-      const masteryRes = await fetch(`/api/riot/champion-masteries?puuid=${puuid}`);
-      if (masteryRes.ok) {
-        const masteryData: Mastery[] = await masteryRes.json();
-        setMasteries(masteryData.slice(0, 10));
-      } else {
-        console.error("Fallo al cargar maestrías.");
-      }
+                    {state.error && (
+                        <div className="bg-red-900 p-4 rounded-lg text-red-300 font-semibold border-l-4 border-red-500">
+                            <p className="font-bold mb-1">¡Error en la búsqueda!</p>
+                            <p>{state.error}</p>
+                        </div>
+                    )}
 
-    } catch (err: unknown) {
-      if (err instanceof Error) setError(err.message);
-      else setError("Ha ocurrido un error desconocido.");
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  const summoner = playerData?.summoner;
-  // const stats = playerData?.stats; // Si implementas stats, úsalo aquí
+                    {state.data && (
+                        <div className="bg-gray-700 p-6 rounded-xl">
+                            <div className="flex items-center border-b border-gray-600 pb-4 mb-4">
+                                <span className="inline-block bg-gray-600 p-3 rounded-full text-blue-400 text-2xl">
+                                    👤
+                                </span>
+                                <div className="ml-4">
+                                    <h2 className="text-3xl font-bold text-white">{state.data.name}</h2>
+                                    <p className="text-blue-400 text-lg">Nivel {state.data.summonerLevel} | Región: {state.data.region}</p>
+                                </div>
+                            </div>
+                            
+                            <h3 className="text-2xl font-semibold mt-6 mb-2 text-white">Clasificación (Ranks)</h3>
+                            {renderRanks(state.data.ranks)}
+                        </div>
+                    )}
+                </section>
+            </div>
+        </>
+    );
+};
 
-  return (
-    <main className="min-h-screen bg-black text-white flex flex-col items-center justify-start p-8">
-      <h1 className="text-4xl font-bold mb-6">EliteGG Tracker</h1>
-
-      <div className="flex flex-col sm:flex-row gap-2 items-center">
-        <input
-          type="text"
-          placeholder="Nombre del invocador (ej: Faker)"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          className="border border-gray-500 p-2 rounded text-white bg-black placeholder-white w-64"
-        />
-        <button
-          onClick={() => {
-            const cleanName = username.split("#")[0].trim();
-            fetchData(cleanName);
-          }}
-          className="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 transition"
-          disabled={loading}
-        >
-          {loading ? "Cargando..." : "Buscar"}
-        </button>
-      </div>
-
-      {error && <p className="mt-4 text-red-500 font-semibold">{error}</p>}
-
-      {summoner && (
-        <section className="mt-6 w-full max-w-2xl bg-gray-900 p-4 rounded shadow-lg">
-          <h2 className="text-2xl font-bold mb-3 border-b border-gray-700 pb-2">Información del Jugador: {summoner.name}</h2>
-          <ul className="space-y-1">
-            <li><strong>Nombre:</strong> {summoner.name}</li>
-            <li><strong>Nivel:</strong> {summoner.summonerLevel}</li>
-            <li><strong>PUUID:</strong> <span className="text-sm truncate inline-block max-w-full">{summoner.puuid}</span></li>
-            <li><strong>Icono de Perfil:</strong> {summoner.profileIconId}</li>
-          </ul>
-        </section>
-      )}
-      
-      {matches.length > 0 && (
-        <section className="mt-6 w-full max-w-2xl bg-gray-900 p-4 rounded shadow-lg">
-          <h2 className="text-xl font-semibold mb-2">Últimas Partidas (Match IDs)</h2>
-          <ul className="list-disc list-inside space-y-1">
-            {matches.map((match) => (
-              <li key={match} className="text-sm truncate">{match}</li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {masteries.length > 0 && (
-        <section className="mt-6 w-full max-w-2xl bg-gray-900 p-4 rounded shadow-lg">
-          <h2 className="text-xl font-semibold mb-2">Maestrías de Campeón (Top 10)</h2>
-          <ul className="list-disc list-inside space-y-1">
-            {masteries.map((m) => (
-              <li key={m.championId}>
-                Campeón **{m.championId}** → Puntos: **{m.championPoints.toLocaleString()}**
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-    </main>
-  );
-}
+export default Home;

@@ -1,6 +1,5 @@
-// pages/api/riot/player-data.ts
+// frontend/pages/api/riot/player-data.ts
 
-// Usamos import/export y AxiosError para evitar errores de linter/TypeScript
 import axios, { AxiosError } from 'axios'; 
 import { NextApiRequest, NextApiResponse } from 'next';
 
@@ -8,16 +7,17 @@ import { NextApiRequest, NextApiResponse } from 'next';
 const RIOT_API_KEY = process.env.RIOT_API_KEY; 
 
 const REGION_ROUTING: { [key: string]: string } = {
-    euw1: 'europe',
-    na1: 'americas',
-    kr: 'asia',
-    // ... agrega más regiones si es necesario
+    euw1: 'europe', 
+    na1: 'americas', 
+    kr: 'asia', 
 };
 
-// 2. FUNCIÓN HANDLER
+/**
+ * Endpoint API para buscar Riot ID y obtener datos de invocador y clasificación (Rank).
+ * @route /api/riot/player-data?riotId=[name]&tagLine=[tag]&regionLoL=[region]
+ */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     
-    // Tipado de la query para evitar errores de TypeScript
     const { riotId, tagLine, regionLoL = 'euw1' } = req.query as { 
         riotId?: string; 
         tagLine?: string; 
@@ -26,7 +26,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     // --- VALIDACIONES INICIALES ---
     if (!RIOT_API_KEY) {
-        return res.status(500).json({ error: 'Error de Configuración: La variable RIOT_API_KEY no está definida.' });
+        return res.status(500).json({ error: 'Error de Configuración: La variable RIOT_API_KEY no está definida en el entorno de Vercel.' });
     }
 
     if (!riotId || typeof riotId !== 'string' || !tagLine || typeof tagLine !== 'string') {
@@ -43,8 +43,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const headers = {
         'X-Riot-Token': RIOT_API_KEY,
     };
-
-    console.log(`[DIAGNÓSTICO] Buscando Riot ID: ${riotId}#${tagLine} en ${lowerCaseRegion.toUpperCase()}`);
 
     try {
         // === PASO 1: OBTENER PUUID (API Account-v1) ===
@@ -85,18 +83,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 status = axiosError.response.status;
                 
                 if (status === 403) {
-                    message = 'Error 403: Clave API no válida o expirada. ¡Revisa tu clave en Vercel/logs!';
+                    // Mensaje mejorado para el error 403
+                    message = 'Error 403: Clave API no válida o expirada. Verifica que la clave RIOT_API_KEY en Vercel sea de Producción o una clave de Desarrollo recién generada (dura 24h).';
                 } 
                 else if (status === 404) {
-                     message = 'Error 404: El Riot ID no fue encontrado o el invocador no tiene datos de liga.';
+                     message = 'Error 404: El Riot ID no fue encontrado o el invocador no tiene datos de liga en la región seleccionada.';
                 } 
-                // ... (Otros errores manejados correctamente)
+                // Intenta usar el mensaje de Riot si está disponible
+                const riotMessage = (axiosError.response.data as {status?: {message?: string}}).status?.message;
+                message = riotMessage || message;
             }
         } else {
             message = (error as Error).message || message;
         }
 
-        console.error(`Error en la llamada a Riot API (Status: ${status}):`, message);
         res.status(status).json({ error: message });
     }
 }
