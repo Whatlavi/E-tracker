@@ -11,8 +11,8 @@ interface SummonerData {
 }
 
 interface ErrorResponse {
-    error: string;
-    details?: string;
+    error: string;
+    details?: string;
 }
 
 const REGION = 'euw1'; 
@@ -20,6 +20,11 @@ const REGION = 'euw1';
 export default async function handler(req: NextApiRequest, res: NextApiResponse<SummonerData | ErrorResponse>) {
   const { summoner } = req.query;
   const RIOT_API_KEY = process.env.RIOT_API_KEY;
+  
+  // 🛑 LOG DE VERIFICACIÓN CLAVE (PARA LA TERMINAL)
+  console.log('--- DIAGNÓSTICO DE CLAVE API ---');
+  console.log('CLAVE LEÍDA (Primeros 10 caracteres):', RIOT_API_KEY ? RIOT_API_KEY.substring(0, 10) : '¡CLAVE NO ENCONTRADA!');
+  console.log('---------------------------------');
 
   if (!summoner || typeof summoner !== 'string') {
     return res.status(400).json({ error: 'Falta el nombre del invocador' });
@@ -43,12 +48,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     }
 
     const data: SummonerData = await response.json();
-    
-    // **Verificación crucial: Asegurar que PUUID existe antes de responder**
-    if (!data.puuid) {
-        return res.status(500).json({ error: 'Respuesta de Riot incompleta', details: 'Falta la propiedad PUUID en los datos del invocador.' });
-    }
-    
+    
+    // **Verificación crucial: Asegurar que PUUID existe antes de responder**
+    if (!data.puuid) {
+        return res.status(500).json({ error: 'Respuesta de Riot incompleta', details: 'Falta la propiedad PUUID en los datos del invocador.' });
+    }
+    
     res.status(200).json(data);
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : 'Error de red o servidor desconocido';

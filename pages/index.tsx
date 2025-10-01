@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 
-// --- INTERFACES DE DATOS ---
+// --- INTERFACES DE DATOS (Necesarias para la compilación) ---
 
 interface LeagueStat {
   queueType: string;
@@ -26,7 +26,7 @@ interface SummonerData {
   profileIconId: number;
 }
 
-// NOTA: Esta interfaz ya no envuelve el SummonerData, se usa solo para el estado local
+// Interfaz para el estado completo del jugador
 interface PlayerState {
   summoner: SummonerData;
   stats?: LeagueStat[];
@@ -57,24 +57,24 @@ export default function Home() {
 
       if (!playerRes.ok) {
         // Maneja errores 404/500 de tu API Route
-        const errorData = await playerRes.json().catch(() => ({ error: 'Error desconocido', details: '' }));
-        throw new Error(`Error al buscar invocador: ${errorData.error} (${errorData.details})`);
+        const errorData = await playerRes.json().catch(() => ({ error: 'Error desconocido' }));
+        throw new Error(`Error al buscar invocador: ${errorData.error || playerRes.statusText}`);
       }
           
       // La respuesta es directamente el objeto SummonerData
-      const data: SummonerData = await playerRes.json();
+      const summonerData: SummonerData = await playerRes.json();
       
-      // 🚨 CORRECCIÓN CLAVE: El PUUID ahora se lee directamente de 'data'
-      const puuid = data.puuid; 
+      // 🚨 CORRECCIÓN CLAVE: Verifica si el PUUID existe en el objeto que viene de la API.
+      const puuid = summonerData.puuid; 
       if (!puuid) {
+        // Este error indica que la respuesta de Riot fue extraña, aunque haya sido 200 OK.
         throw new Error("Datos de invocador incompletos (falta PUUID).");
       }
 
-      // Establece el estado principal
-      setPlayerData({ summoner: data, stats: [] }); 
+      // Establece el estado principal con el objeto completo del invocador
+      setPlayerData({ summoner: summonerData, stats: [] }); 
 
-      // 2. 🔹 Obtener últimas partidas
-      // El código del frontend ya asume que player-data.ts tiene el puuid
+      // 2. 🔹 Obtener últimas partidas (usando el PUUID)
       const matchesRes = await fetch(`/api/riot/matches?puuid=${puuid}`);
       if (matchesRes.ok) {
         const matchesData: string[] = await matchesRes.json();
@@ -83,7 +83,7 @@ export default function Home() {
         console.error("Fallo al cargar partidas.");
       }
 
-      // 3. 🔹 Obtener maestrías de campeón
+      // 3. 🔹 Obtener maestrías de campeón (usando el PUUID)
       const masteryRes = await fetch(`/api/riot/champion-masteries?puuid=${puuid}`);
       if (masteryRes.ok) {
         const masteryData: Mastery[] = await masteryRes.json();
