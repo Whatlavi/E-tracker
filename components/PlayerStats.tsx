@@ -1,15 +1,9 @@
-"use client";
+// frontend/components/PlayerStats.tsx
+
 import { useEffect, useState } from "react";
 
-// --- INTERFACES (Correctas) ---
-interface SummonerData {
-  id: string;
-  name: string;
-  puuid: string;
-  summonerLevel: number;
-}
-
-interface LeagueStat {
+// --- INTERFACES ---
+interface RankData {
   queueType: string;
   tier: string;
   rank: string;
@@ -18,25 +12,29 @@ interface LeagueStat {
   losses: number;
 }
 
-interface PlayerAPIResponse {
-  summoner: SummonerData;
-  stats?: LeagueStat[];
+interface PlayerData {
+  name: string;
+  tagLine: string;
+  summonerLevel: number;
+  ranks: RankData[];
+  error?: string;
 }
 
-// 🛑 CORRECCIÓN: Ahora recibe la región como prop
+// 🛑 Esperamos el RIOT ID completo
 interface PlayerStatsProps {
-  username: string;
-  region: string; // Añadimos la región
+  riotId: string; 
+  region: string; 
 }
 
-export default function PlayerStats({ username, region }: PlayerStatsProps) { // 🛑 Desestructuramos la región
-  const [data, setData] = useState<PlayerAPIResponse | null>(null);
+export default function PlayerStats({ riotId, region }: PlayerStatsProps) { 
+  const [data, setData] = useState<PlayerData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // No necesitamos dividir el ID aquí, solo lo usamos para la URL y la interfaz
+
   useEffect(() => {
-    // 🛑 Ahora el fetch solo se ejecuta si tenemos ambos datos
-    if (!username || !region) return;
+    if (!riotId || !region) return;
 
     const fetchPlayer = async () => {
       setError(null);
@@ -44,21 +42,18 @@ export default function PlayerStats({ username, region }: PlayerStatsProps) { //
       setLoading(true);
 
       try {
-        // 🛑 CORRECCIÓN: Usamos el endpoint de la API Route que creaste
+        // Enviamos el Riot ID completo y la región al backend
         const res = await fetch(
-          `/api/riot/player-data?summoner=${encodeURIComponent(username)}&region=${region}`
+          `/api/riot/player-data?riotId=${encodeURIComponent(riotId)}&regionLoL=${region}`
         );
-        
-        // El nuevo endpoint devuelve el objeto completo PlayerAPIResponse
-        const json = (await res.json()) as PlayerAPIResponse | { error: string }; 
-        
-        if ("error" in json) {
-            // El backend devuelve { error: 'Mensaje de error' }
-            setError(json.error);
-        } else {
-            // El backend devuelve el objeto PlayerAPIResponse completo
-            setData(json); 
-        }
+        
+        const json = (await res.json()) as PlayerData; 
+        
+        if (json.error) {
+            setError(json.error);
+        } else {
+            setData(json); 
+        }
 
       } catch {
         setError("Error de red al conectar con el servidor.");
@@ -68,39 +63,38 @@ export default function PlayerStats({ username, region }: PlayerStatsProps) { //
     };
 
     fetchPlayer();
-    // 🛑 Añadimos la región a las dependencias del useEffect
-  }, [username, region]); 
+  }, [riotId, region]); 
 
-  if (!username || !region) return null;
+  if (!riotId || !region) return null;
 
   return (
-    <div className="mt-4 p-4 border rounded bg-gray-50 w-full">
-      {loading && <p>Cargando estadísticas de {username} en {region.toUpperCase()}...</p>}
-      {error && <p className="text-red-500 font-semibold">Error: {error}</p>}
+    <div className="mt-4 p-4 border rounded bg-gray-50 w-full" style={{ marginTop: 20, border: '1px solid #ddd', padding: 15, borderRadius: 8 }}>
+      {loading && <p style={{ textAlign: 'center' }}>Cargando estadísticas de **{riotId}** en {region.toUpperCase()}...</p>}
+      {error && <p style={{ color: 'red', textAlign: 'center', fontWeight: 'bold' }}>Error: {error}</p>}
       {data && (
         <div>
-          <h2 className="font-bold text-lg">{data.summoner.name} (Nivel {data.summoner.summonerLevel})</h2>
-          <p className="text-sm text-gray-600">Región: {region.toUpperCase()}</p>
-          
-          <h3 className="font-semibold mt-3 mb-1">Ranked Stats:</h3>
-          {data.stats?.length ? (
-            <div className="mt-2">
-              {data.stats.map((stat) => (
-                <div key={stat.queueType} className="border p-2 rounded mb-1 bg-white">
-                  <p className="font-medium text-blue-700">
-                    {stat.queueType.replace('_5X5', '').replace('_SOLO', ' Solo/Duo')}
+          <h2 style={{ fontSize: 20, marginBottom: 10 }}>{data.name}#{data.tagLine} (Nivel {data.summonerLevel})</h2>
+          <p style={{ fontSize: 14, color: '#555' }}>Región: {region.toUpperCase()}</p>
+          
+          <h3 style={{ fontWeight: 'bold', marginTop: 15, marginBottom: 5 }}>Ranked Stats:</h3>
+          {data.ranks?.length ? (
+            <div style={{ marginTop: 5 }}>
+              {data.ranks.map((stat) => (
+                <div key={stat.queueType} style={{ border: '1px solid #eee', padding: 10, borderRadius: 5, marginBottom: 8, backgroundColor: '#fff' }}>
+                  <p style={{ fontWeight: 'bold', color: '#0070f3' }}>
+                    {stat.queueType.replace('RANKED_SOLO_5x5', 'Solo/Duo').replace('RANKED_FLEX_SR', 'Flexible')}
                   </p>
                   <p>
                     <strong>{stat.tier} {stat.rank}</strong> ({stat.leaguePoints} LP)
                   </p>
-                  <p className="text-sm text-gray-500">
+                  <p style={{ fontSize: 12, color: '#777' }}>
                     W: {stat.wins} | L: {stat.losses} (Win Rate: {((stat.wins / (stat.wins + stat.losses)) * 100).toFixed(0)}%)
                   </p>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-gray-500">Sin estadísticas clasificatorias disponibles.</p>
+            <p style={{ color: '#777' }}>Sin estadísticas clasificatorias disponibles.</p>
           )}
         </div>
       )}

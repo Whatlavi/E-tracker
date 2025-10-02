@@ -1,112 +1,96 @@
-"use client";
-import { useState } from "react";
-import PlayerStats from "../components/PlayerStats";
+// En tu archivo: frontend/pages/search.tsx (o .js)
 
-// Lista oficial de códigos de regiones para la API de invocador
-const REGION_LIST = [
-  { code: 'euw1', name: 'EUW (Europa Oeste)' },
-  { code: 'na1', name: 'NA (Norteamérica)' },
-  { code: 'kr', name: 'KR (Corea)' },
-  { code: 'eun1', name: 'EUNE (Europa Nórdica y Este)' },
-  { code: 'br1', name: 'BR (Brasil)' },
-  { code: 'la1', name: 'LA1 (Latinoamérica Norte)' },
-  { code: 'la2', name: 'LA2 (Latinoamérica Sur)' },
-  { code: 'oc1', name: 'OC (Oceanía)' },
-];
+import { useRouter } from 'next/router';
+import React, { useEffect, useState } from 'react';
+import axios, { AxiosError } from 'axios'; // Importamos Axios y AxiosError
 
-export default function Search() {
-  const [summonerName, setSummonerName] = useState("");
-  const [region, setRegion] = useState('euw1');
-  const [submittedName, setSubmittedName] = useState("");
-  const [submittedRegion, setSubmittedRegion] = useState("");
+// 🛑 FIX: Interfaz para tipar los datos que vienen del API
+interface PlayerData {
+  name: string;
+  tagLine: string;
+  puuid: string;
+  summonerId: string;
+  ranks: any[]; // Ajusta esto si tienes el tipo exacto para los ranks
+  region: string;
+}
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!summonerName.trim()) return;
-    
-    setSubmittedName(summonerName.trim());
-    setSubmittedRegion(region);
+const SearchPage = () => {
+  const router = useRouter();
+  
+  // 🛑 FIX: Usamos la interfaz PlayerData | null para tipar correctamente
+  const [playerData, setPlayerData] = useState<PlayerData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Función de búsqueda
+  const fetchPlayerData = async (riotId: string, regionLoL: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+          const res = await axios.get<PlayerData>(`/api/riot/player-data?riotId=${riotId}&regionLoL=${regionLoL}`);
+          setPlayerData(res.data);
+      } catch (err) { 
+          // 🛑 FIX: Manejar el error de forma segura y tipada
+          if (axios.isAxiosError(err) && err.response) {
+              const apiErrorMessage = (err.response.data as {error?: string}).error;
+              setError(apiErrorMessage || `Error ${err.response.status} de la API.`);
+          } else if (err instanceof Error) {
+              setError(err.message);
+          } else {
+              setError('Error desconocido al buscar datos.');
+          }
+          
+          setPlayerData(null);
+      } finally {
+          setLoading(false);
+      }
   };
 
+  // 🛑 FIX CLAVE: Lógica de carga de datos que se ejecuta solo cuando el router está listo
+  useEffect(() => {
+    if (!router.isReady) {
+      return; 
+    }
+    
+    // Obtenemos los parámetros después de la verificación
+    const { riotId, regionLoL } = router.query; 
+    const defaultRegion = (regionLoL as string) || 'euw1';
+
+    if (typeof riotId === 'string' && riotId.trim() !== '') {
+        fetchPlayerData(riotId, defaultRegion);
+    } else {
+        setLoading(false);
+        setPlayerData(null);
+    }
+    
+  }, [router.isReady, router.query]); 
+  // **************************************************
+
+  // --- Renderizado de la Interfaz basado en estados ---
+  // 🛑 FIX: Mostrar estado de carga si el router no está listo
+  if (!router.isReady) {
+    return <div>Cargando la aplicación...</div>; 
+  }
+  
+  if (loading) {
+    return <div>Buscando al invocador...</div>;
+  }
+  
+  if (error) {
+    return <div>Error al buscar: {error}</div>;
+  }
+  
+  // 🛑 FIX: Asegurar que playerData no es null antes de intentar acceder a sus propiedades
+  if (!playerData) {
+      return <div>Introduce un Riot ID y Tagline para empezar la búsqueda.</div>;
+  }
+
   return (
-    <div
-      style={{
-        padding: 20,
-        maxWidth: 450,
-        margin: "0 auto",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-      }}
-    >
-      <h1 style={{ fontSize: 24, fontWeight: "bold", marginBottom: 20 }}>
-        EliteGG Tracker 🎮
-      </h1>
-
-      <form onSubmit={handleSearch} style={{ width: '100%' }}>
-        
-        {/* Selector de Región */}
-        <select 
-          value={region} 
-          onChange={(e) => setRegion(e.target.value)}
-          style={{ 
-            width: "100%", 
-            padding: 10, 
-            borderRadius: 6, 
-            border: "1px solid #ccc", 
-            marginBottom: 10, 
-            fontSize: 16 
-          }}
-        >
-          {REGION_LIST.map((r) => (
-            <option key={r.code} value={r.code}>{r.name}</option>
-          ))}
-        </select>
-
-        {/* Campo de Invocador */}
-        <input
-          type="text"
-          placeholder="Nombre del invocador"
-          value={summonerName}
-          onChange={(e) => setSummonerName(e.target.value)}
-          style={{
-            width: "100%",
-            padding: 10,
-            borderRadius: 6,
-            border: "1px solid #ccc",
-            marginBottom: 15,
-            fontSize: 16,
-          }}
-        />
-
-        {/* Botón de Búsqueda */}
-        <button 
-            type="submit" 
-            style={{ 
-                width: "100%", 
-                padding: 10, 
-                borderRadius: 6, 
-                backgroundColor: '#0070f3',
-                color: 'white',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: 16
-            }}
-        >
-          Buscar 🔎
-        </button>
-      </form>
-
-      {/* Área de Resultados */}
-      <div style={{ marginTop: 20, width: '100%' }}>
-        {submittedName && submittedRegion ? (
-          <PlayerStats username={submittedName} region={submittedRegion} />
-        ) : (
-           <p style={{ color: "#555", marginTop: 10, textAlign: 'center' }}>
-            Escribe un nombre de invocador y haz clic en &quot;Buscar&quot;. {/* 🛑 CORRECCIÓN: Usamos &quot; */}
-           </p>
-        )}
-      </div>
+    <div>
+        <h1>Resultados para {playerData.name}#{playerData.tagLine}</h1>
+        {/* Aquí puedes usar todas las propiedades: playerData.puuid, playerData.ranks, etc. */}
     </div>
   );
-}
+};
+
+export default SearchPage;
