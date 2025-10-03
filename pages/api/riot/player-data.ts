@@ -1,80 +1,95 @@
-// pages/api/riot/player-data.ts - VERSIÓN FINAL Y COMPLETA (Next.js API)
-
+// pages/api/riot/player-data.ts - VERSIÓN FINAL CON HEADERS COMPLETOS
 import axios, { AxiosError } from 'axios'; 
 import { NextApiRequest, NextApiResponse } from 'next';
 
-// Asegúrate de definir esta variable en tu archivo .env.local
 const RIOT_API_KEY = process.env.RIOT_API_KEY; 
 
-// Mapeo de región de juego (plataforma) a la ruta regional (cluster)
-const REGION_ROUTING: { [key: string]: string } = {
-    euw1: 'europe', 
-    na1: 'americas', 
-    kr: 'asia', 
-    eun1: 'europe',
-    br1: 'americas',
-    la1: 'americas', 
-    la2: 'americas', 
-    oc1: 'sea', 
-    // Agrega más regiones si es necesario
+// Base de los Request Headers, incluyendo los headers de emulación de navegador
+const BASE_HEADERS = {
+    // Headers que nos pediste añadir:
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+    "Accept-Language": "es-ES,es;q=0.9",
+    "Accept-Charset": "application/x-www-form-urlencoded; charset=UTF-8",
+    // El header CRÍTICO de la clave API (se añade en el código más abajo)
+    // El header 'Origin' lo gestiona el servidor, no es necesario añadirlo aquí.
 };
+
+
+// Mapeo de región de juego (Plataforma: euw1) a la ruta regional (Cluster: europe)
+const REGION_ROUTING: { [key: string]: string } = {
+    euw1: 'europe', eun1: 'europe', tr1: 'europe', ru: 'europe', 
+    na1: 'americas', br1: 'americas', la1: 'americas', la2: 'americas', 
+    kr: 'asia', jp1: 'asia', oc1: 'sea', sg2: 'sea', ph2: 'sea', tw2: 'sea', th2: 'sea', vn2: 'sea',
+};
+
+// Mapeo de Tagline (el TAG del Riot ID) a la región de Plataforma (ej: EUW -> euw1)
+const TAGLINE_TO_PLATFORM: { [key: string]: string } = {
+    EUW: 'euw1', EUNE: 'eun1', TR: 'tr1', RU: 'ru',
+    NA: 'na1', BR: 'br1', LAN: 'la1', LAS: 'la2',
+    KR: 'kr', JP: 'jp1', OCE: 'oc1', SEA: 'oc1',
+};
+
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     
-    // 1. EXTRAER PARÁMETROS: Esperamos riotId (Nombre) y tagLine (TAG) SEPARADOS
     const { 
         riotId: riotIdNameRaw, 
         tagLine: tagLineRaw, 
-        regionLoL = 'euw1' 
+        regionLoL: regionLoLRaw 
     } = req.query as { 
         riotId?: string; 
         tagLine?: string;
         regionLoL?: string;
     };
     
-    // --- Validaciones iniciales ---
+    // 1. Validaciones Iniciales y Preparación
     if (!RIOT_API_KEY) {
         return res.status(500).json({ error: 'Error de Configuración: La variable RIOT_API_KEY no está definida.' });
     }
 
-    if (!riotIdNameRaw || !tagLineRaw || typeof riotIdNameRaw !== 'string' || typeof tagLineRaw !== 'string') {
+    if (!riotIdNameRaw || !tagLineRaw) {
         return res.status(400).json({ error: 'Parámetros incompletos. Se requieren el Nombre (riotId) y el TAG (tagLine).' });
     }
 
-    // Limpiamos y validamos la región
     const riotIdName = riotIdNameRaw.trim();
-    const tagLine = tagLineRaw.trim();
-    const lowerCaseRegion = regionLoL.toLowerCase();
-    const regionalRoute = REGION_ROUTING[lowerCaseRegion]; 
+    const tagLine = tagLineRaw.trim().toUpperCase();
+    
+    // Determinar Rutas
+    const platformRegionFromTag = TAGLINE_TO_PLATFORM[tagLine];
+    const platformRegionFromQuery = regionLoLRaw?.toLowerCase() || 'euw1';
+    const platformRegion = platformRegionFromTag || platformRegionFromQuery; 
+    const globalRoute = REGION_ROUTING[platformRegion]; 
 
-    if (!regionalRoute) {
-        return res.status(400).json({ error: 'Región de LoL no válida o no soportada.' });
+    if (!globalRoute) {
+        return res.status(400).json({ error: `Región no válida o no soportada: ${platformRegion}.` });
     }
 
-    // Autenticación con Header
-    const headers = { 'X-Riot-Token': RIOT_API_KEY };
+    // Unimos los headers base con el header de autenticación
+    const headers = { 
+        ...BASE_HEADERS,
+        'X-Riot-Token': RIOT_API_KEY // CRÍTICO: La clave API
+    };
 
     try {
-        // === PASO 1: OBTENER PUUID (API Account-v1) - RUTA REGIONAL (ej: europe) ===
-        // Usamos encodeURIComponent() para manejar nombres o tags con espacios
+        // === PASO 1: OBTENER PUUID (API Account-v1) - RUTA GLOBAL ===
         const encodedName = encodeURIComponent(riotIdName);
         const encodedTag = encodeURIComponent(tagLine);
         
-        const accountUrl = `https://${regionalRoute}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodedName}/${encodedTag}`;
+        const accountUrl = `https://${globalRoute}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodedName}/${encodedTag}`;
         
-        const accountResponse = await axios.get(accountUrl, { headers });
+        const accountResponse = await axios.get(accountUrl, { headers }); // Usando los nuevos headers
         const puuid: string = accountResponse.data.puuid; 
 
-        // === PASO 2: OBTENER SUMMONER ID y NIVEL (API Summoner-v4) - RUTA DE PLATAFORMA (ej: euw1) ===
-        const summonerUrl = `https://${lowerCaseRegion}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${puuid}`;
+        // === PASO 2: OBTENER SUMMONER ID (API Summoner-v4) - RUTA DE PLATAFORMA ===
+        const summonerUrl = `https://${platformRegion}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${puuid}`;
 
-        const summonerResponse = await axios.get(summonerUrl, { headers });
+        const summonerResponse = await axios.get(summonerUrl, { headers }); // Usando los nuevos headers
         const { id: summonerId, ...summonerData } = summonerResponse.data; 
 
         // === PASO 3: OBTENER DATOS DE LA LIGA/RANK (API League-v4) - RUTA DE PLATAFORMA ===
-        const rankUrl = `https://${lowerCaseRegion}.api.riotgames.com/lol/league/v4/entries/by-summoner/${summonerId}`;
+        const rankUrl = `https://${platformRegion}.api.riotgames.com/lol/league/v4/entries/by-summoner/${summonerId}`;
         
-        const rankResponse = await axios.get(rankUrl, { headers });
+        const rankResponse = await axios.get(rankUrl, { headers }); // Usando los nuevos headers
         const rankData = rankResponse.data;
 
         // === 4. DEVOLVER DATOS COMBINADOS ===
@@ -85,11 +100,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             puuid,
             summonerId,
             ranks: rankData, 
-            region: lowerCaseRegion.toUpperCase(),
+            region: platformRegion.toUpperCase(),
         });
 
     } catch (error) { 
-        // --- MANEJO DE ERRORES DETALLADO ---
+        // --- MANEJO DE ERRORES DETALLADO (Sin Cambios) ---
         let status = 500;
         let message = 'Error desconocido al buscar datos del invocador.';
 
@@ -97,12 +112,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             const axiosError = error as AxiosError;
             status = axiosError.response?.status || 500;
             
-            if (status === 403) {
-                message = 'Error 403: Clave API no válida o caducada.';
-            } else if (status === 404) {
-                message = `Error 404: El Riot ID "${riotIdName}#${tagLine}" no fue encontrado en la región seleccionada.`;
+            if (status === 404) {
+                message = `Error 404: El Riot ID "${riotIdName}#${tagLine}" no fue encontrado en la región ${platformRegion.toUpperCase()}. Verifica el nombre y el Tagline.`;
+            } else if (status === 403) {
+                message = 'Error 403: Clave API no válida o acceso prohibido.';
             } else if (status === 429) {
-                message = 'Error 429: Límite de peticiones excedido. Inténtalo de nuevo más tarde.';
+                message = 'Error 429: Límite de peticiones excedido.';
             } else {
                 const riotMessage = (axiosError.response?.data as {status?: {message?: string}}).status?.message;
                 message = riotMessage || `Error ${status} en el servidor de Riot.`;
