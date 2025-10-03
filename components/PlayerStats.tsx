@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 // ----------------------------------------------------
 // 1. Tipos de Datos (Interfaces)
@@ -7,11 +7,11 @@ import React from 'react';
 interface PlayerData {
     puuid: string;
     summonerId: string;
-    summonerLevel: number;      
+    summonerLevel: number;      
     profileIconId: number;     
-    regionPlataforma: string;  
-    gameName: string;          
-    tagLine: string;           
+    regionPlataforma: string;  
+    gameName: string;          
+    tagLine: string;           
 }
 
 interface PlayerStatsProps {
@@ -19,7 +19,6 @@ interface PlayerStatsProps {
     isLoading: boolean;
 }
 
-// Componente Placeholder para la sección de Ranks (Clasificación)
 const RanksDisplay: React.FC = () => {
     return (
         <div className="mt-4 p-4 border border-gray-700 rounded-lg bg-gray-800">
@@ -36,13 +35,39 @@ const RanksDisplay: React.FC = () => {
 
 const PlayerStats: React.FC<PlayerStatsProps> = ({ playerData, isLoading }) => {
     
-    // 🚨 CORRECCIÓN FINAL: Usando la versión más reciente encontrada
-    const LOL_VERSION = '15.19.1'; 
+    // 🚨 IMPLEMENTACIÓN DINÁMICA: Estado para guardar la versión de LOL
+    const [lolVersion, setLolVersion] = useState<string | null>(null);
+
+    // OBTENER LA VERSIÓN MÁS RECIENTE AL MONTAR EL COMPONENTE
+    useEffect(() => {
+        const fetchLolVersion = async () => {
+            try {
+                // Llama al endpoint de DDragon para obtener todas las versiones
+                const response = await fetch('https://ddragon.leagueoflegends.com/api/versions.json');
+                if (response.ok) {
+                    const versions = await response.json();
+                    // El primer elemento es la versión más reciente
+                    setLolVersion(versions[0]);
+                } else {
+                    // Fallback a una versión conocida si la API falla
+                    setLolVersion('14.24.1'); 
+                }
+            } catch (error) {
+                console.error("Error al obtener la versión de LoL:", error);
+                setLolVersion('14.24.1'); // Versión de fallback
+            }
+        };
+
+        if (!lolVersion) {
+            fetchLolVersion();
+        }
+    }, [lolVersion]);
     
     // --- Lógica de Carga y Estado Vacío ---
 
-    if (isLoading) {
-        return <div className="text-center text-white p-10">Cargando datos del invocador...</div>;
+    // El componente espera a que tanto los datos del jugador como la versión de LOL se carguen
+    if (isLoading || !lolVersion) { 
+        return <div className="text-center text-white p-10">Cargando datos y recursos...</div>;
     }
 
     if (!playerData) {
@@ -66,8 +91,8 @@ const PlayerStats: React.FC<PlayerStatsProps> = ({ playerData, isLoading }) => {
 
     const { gameName, tagLine, summonerLevel, profileIconId, regionPlataforma } = playerData;
     
-    // URL completa para obtener el icono desde Data Dragon
-    const iconUrl = `https://ddragon.leagueoflegends.com/cdn/${LOL_VERSION}/img/profileicon/${profileIconId}.png`;
+    // URL generada con la versión de LOL dinámica
+    const iconUrl = `https://ddragon.leagueoflegends.com/cdn/${lolVersion}/img/profileicon/${profileIconId}.png`;
     
     return (
         <div className="player-stats-container max-w-xl mx-auto p-4 bg-gray-900 rounded-xl shadow-lg">
@@ -83,7 +108,6 @@ const PlayerStats: React.FC<PlayerStatsProps> = ({ playerData, isLoading }) => {
                         src={iconUrl} 
                         alt={`Icono de Invocador: ${gameName}`} 
                         className="w-20 h-20 rounded-full object-cover border-4 border-blue-500"
-                        // El manejador onError solo es para depuración.
                         onError={(e) => { 
                              console.error(`Error al cargar el icono. URL fallida: ${iconUrl}`);
                         }}

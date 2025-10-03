@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 
 const RIOT_API_KEY = process.env.RIOT_API_KEY;
 
-// Mapeo de Región de Plataforma (euw1) a Región de RUTA (europe)
+// Mapeo de Región de Plataforma (euw1, na1) a Región de RUTA (europe, americas)
 const PLATFORM_TO_ROUTING_REGION: { [key: string]: string } = {
     // Europa
     'euw1': 'europe',
@@ -25,7 +25,6 @@ const PLATFORM_TO_ROUTING_REGION: { [key: string]: string } = {
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-    // regionLoL es la Región de Plataforma enviada por el usuario (ej: euw1)
     const { riotId, tagLine, regionLoL } = req.query as { riotId?: string, tagLine?: string, regionLoL?: string }; 
     
     if (!riotId || !tagLine || !regionLoL) {
@@ -65,7 +64,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 
         // LLAMADA 2: Obtener Summoner ID y Nivel (Usa la REGIÓN DE PLATAFORMA original)
-        // Esto previene el error 'fetch failed' al asegurar un dominio válido (ej: euw1.api.riotgames.com)
         const summonerUrl = `https://${platformRegion}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${puuid}`;
         
         const summonerRes = await fetch(summonerUrl, { 
@@ -87,15 +85,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         res.status(200).json({
             puuid: puuid,
             summonerId: summonerData.id,
-            // 🚨 Añadido el Nivel del Invocador
             summonerLevel: summonerData.summonerLevel, 
+            profileIconId: summonerData.profileIconId, // <-- CLAVE PARA LA IMAGEN
             regionPlataforma: platformRegion,
             gameName: accountData.gameName,
             tagLine: accountData.tagLine
         });
 
     } catch (err) {
-        // Captura errores de red (como el 'fetch failed')
         res.status(500).json({ error: 'Error interno en la secuencia de la API de Riot.', details: (err as Error).message });
     }
 }
