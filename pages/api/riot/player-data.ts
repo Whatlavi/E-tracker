@@ -86,7 +86,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             puuid: puuid,
             summonerId: summonerData.id,
             summonerLevel: summonerData.summonerLevel, 
-            profileIconId: summonerData.profileIconId, // <-- CLAVE PARA LA IMAGEN
+            profileIconId: summonerData.profileIconId, // <-- ID DEL ICONO DEVUELTO
             regionPlataforma: platformRegion,
             gameName: accountData.gameName,
             tagLine: accountData.tagLine

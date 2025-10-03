@@ -1,145 +1,110 @@
-"use client";
-import React, { useState, useMemo, useCallback } from 'react';
-// Se ha eliminado 'react-icons' y se usan Emojis para evitar errores de dependencia.
-
-// Define la estructura de un jugador sugerido
-interface SuggestedPlayer {
-    gameName: string;
-    tagLine: string;
-}
-
-// Datos de ejemplo para simular la lista de jugadores recientes
-const DUMMY_PLAYERS: SuggestedPlayer[] = [
-    { gameName: "YIKARMAIY", tagLine: "EUW" },
-    { gameName: "ZEDientodettas", tagLine: "PORFA" },
-    { gameName: "Sung Jin woo", tagLine: "SOUL" },
-    { gameName: "Faker", tagLine: "KR1" },
-    { gameName: "Caps", tagLine: "EUW" },
-];
+import React, { useState, useCallback, useEffect } from 'react';
 
 interface RiotIdSearchBarProps {
-    onSearch: (riotId: string, tagLine: string) => void;
+    onSearch: (gameName: string, tagLine: string) => void;
     loading: boolean;
 }
 
+interface RecentSearch {
+    gameName: string;
+    tagLine: string;
+    platformId: string;
+    profileIconId: number;
+}
+
 const RiotIdSearchBar: React.FC<RiotIdSearchBarProps> = ({ onSearch, loading }) => {
-    const [inputValue, setInputValue] = useState('');
-    const [showSuggestions, setShowSuggestions] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [input, setInput] = useState('');
+    const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([]);
+    const [isFocused, setIsFocused] = useState(false);
 
-    // Lógica para filtrar sugerencias basadas en el input
-    const filteredPlayers = useMemo(() => {
-        if (!inputValue) return DUMMY_PLAYERS;
-        
-        const lowerInput = inputValue.toLowerCase().replace('#', '');
-        
-        return DUMMY_PLAYERS.filter(p => 
-            (p.gameName.toLowerCase() + p.tagLine.toLowerCase()).includes(lowerInput)
-        );
-    }, [inputValue]);
-    
-    // Función central para manejar la búsqueda, ya sea por input o sugerencia
-    const handleSearch = useCallback((input: string) => {
-        setError(null);
-        const trimmedId = input.trim();
-        const parts = trimmedId.split('#');
+    useEffect(() => {
+        try {
+            const searchesString = localStorage.getItem('elitegg_recent_searches');
+            if (searchesString) {
+                setRecentSearches(JSON.parse(searchesString));
+            }
+        } catch (e) {
+            console.error("No se pudieron cargar las búsquedas recientes:", e);
+        }
+    }, [loading]);
 
-        if (parts.length !== 2) {
-             return setError('Formato incorrecto. Usa NombreDeJuego#TAG');
+    const handleSubmit = useCallback((e: React.FormEvent) => {
+        e.preventDefault();
+        
+        const parts = input.trim().split('#');
+        if (parts.length < 2 || parts[0].length === 0 || parts[1].length === 0) {
+            console.error('Formato de Riot ID incorrecto: NombreDeJuego#TAG');
+            return;
         }
 
-        const riotId = parts[0].trim();
+        const gameName = parts[0].trim();
         const tagLine = parts[1].trim();
 
-        if (!riotId || !tagLine) {
-            return setError('Nombre o Etiqueta vacíos.');
+        if (gameName && tagLine) {
+            onSearch(gameName, tagLine);
+            setIsFocused(false); 
         }
+    }, [input, onSearch]);
 
-        onSearch(riotId, tagLine);
-        setShowSuggestions(false);
-        setInputValue(`${riotId}#${tagLine}`);
+    const handleRecentClick = useCallback((search: RecentSearch) => {
+        onSearch(search.gameName, search.tagLine);
+        setInput(`${search.gameName}#${search.tagLine}`);
+        setIsFocused(false);
     }, [onSearch]);
 
-    const handleFormSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!loading) {
-            handleSearch(inputValue);
-        }
-    };
-    
-    // Función que se llama al hacer clic en una sugerencia
-    const handleSuggestionClick = (player: SuggestedPlayer) => {
-        handleSearch(`${player.gameName}#${player.tagLine}`);
-    };
-
     return (
-        <div className="relative w-full max-w-lg">
-            {/* INPUT DE BÚSQUEDA */}
-            <form onSubmit={handleFormSubmit} className="flex">
+        <form onSubmit={handleSubmit} className="relative z-10">
+            <div className="flex bg-gray-700 rounded-xl shadow-2xl overflow-hidden border-2 border-blue-500/50 focus-within:border-blue-400 transition-all duration-300">
                 <input
                     type="text"
-                    value={inputValue}
-                    onChange={(e) => {
-                        setInputValue(e.target.value);
-                        setShowSuggestions(true);
-                        setError(null);
-                    }}
-                    onFocus={() => setShowSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)} 
-                    placeholder="Enter Riot ID, ie. player#NA1"
-                    className="flex-grow p-3 border border-gray-600 rounded-l bg-gray-800 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onFocus={() => setIsFocused(true)}
+                    onBlur={() => setTimeout(() => setIsFocused(false), 200)} 
+                    placeholder="Buscar Riot ID: Nombre#TAG"
+                    className="flex-grow p-4 text-white bg-gray-700 focus:outline-none placeholder-gray-400 text-lg"
                     disabled={loading}
                 />
                 <button
                     type="submit"
-                    className="bg-blue-600 text-white py-3 px-6 rounded-r hover:bg-blue-700 transition disabled:opacity-50"
+                    className={`px-6 text-lg font-bold transition-colors duration-200 flex items-center justify-center ${
+                        loading ? 'bg-gray-600 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+                    }`}
                     disabled={loading}
                 >
-                    {loading ? '...' : 'Buscar'}
+                    {loading ? (
+                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    ) : 'Buscar'}
                 </button>
-            </form>
+            </div>
 
-            {/* ERROR DE FORMATO */}
-            {error && <p className="mt-2 text-red-500 font-semibold">{error}</p>}
-
-            {/* MENÚ DESPLEGABLE DE SUGERENCIAS */}
-            {showSuggestions && (
-                <div className="absolute z-10 w-full mt-1 bg-gray-900 border border-gray-700 rounded shadow-2xl p-2 max-h-80 overflow-y-auto">
-                    
-                    {/* BARRA DE CATEGORÍAS (Emojis: 🕒 Recientes, ⭐ Favoritos) */}
-                    <div className="flex text-sm border-b border-gray-700 mb-2">
-                        <div className="py-2 px-3 text-blue-400 font-bold border-r border-gray-700 flex items-center">
-                            <span className="mr-2 text-lg">🕒</span> RECIENTES
+            {/* Desplegable de Búsquedas Recientes */}
+            {isFocused && recentSearches.length > 0 && (
+                <div className="absolute top-full mt-2 w-full bg-gray-800 border border-gray-700 rounded-xl shadow-2xl overflow-hidden">
+                    <p className="px-4 py-2 text-sm font-semibold text-gray-400 border-b border-gray-700">Recientes</p>
+                    {recentSearches.map((search, index) => (
+                        <div 
+                            key={index}
+                            className="flex items-center p-3 hover:bg-gray-700 cursor-pointer transition-colors"
+                            onMouseDown={() => handleRecentClick(search)} 
+                        >
+                            <img 
+                                src={`https://ddragon.leagueoflegends.com/cdn/15.19.1/img/profileicon/${search.profileIconId}.png`}
+                                alt="Icon"
+                                className="w-8 h-8 rounded-full mr-3"
+                            />
+                            <div>
+                                <p className="font-semibold">{search.gameName}#{search.tagLine}</p>
+                                <p className="text-xs text-gray-500">{search.platformId}</p>
+                            </div>
                         </div>
-                        <div className="py-2 px-3 text-gray-400 flex items-center">
-                            <span className="mr-2 text-lg">⭐</span> FAVORITOS
-                        </div>
-                    </div>
-                    
-                    {/* LISTA DE JUGADORES SUGERIDOS */}
-                    {filteredPlayers.length > 0 ? (
-                        <div className="space-y-1">
-                            {filteredPlayers.map((player, index) => (
-                                <div
-                                    key={index}
-                                    onClick={() => handleSuggestionClick(player)}
-                                    className="flex items-center p-2 rounded cursor-pointer hover:bg-gray-800 transition"
-                                >
-                                    {/* Icono de Riot ID reemplazado por Emoji de Videojuego (🎮) */}
-                                    <span className="text-blue-500 mr-3 text-2xl">🎮</span>
-                                    <div className="text-left">
-                                        <span className="font-semibold text-white">{player.gameName}</span>
-                                        <span className="text-gray-400 text-sm ml-2">#{player.tagLine}</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="text-gray-500 p-3">No hay coincidencias.</p>
-                    )}
+                    ))}
                 </div>
             )}
-        </div>
+        </form>
     );
 };
 

@@ -1,144 +1,112 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 
-// ----------------------------------------------------
-// 1. Tipos de Datos (Interfaces)
-// ----------------------------------------------------
-
+// Define la estructura de datos que esperamos recibir (Consistente con pages/index.tsx)
 interface PlayerData {
+    gameName: string;
+    tagLine: string;
+    summonerLevel: number;
+    profileIconId: number;
     puuid: string;
+    platformId: string; // ✅ Propiedad correcta para la región
     summonerId: string;
-    summonerLevel: number;      
-    profileIconId: number;     // <-- El ID que cambia por jugador (ej: 6621)
-    regionPlataforma: string;  
-    gameName: string;          
-    tagLine: string;           
+    rank: string; 
+    masteryScore: number;
 }
 
 interface PlayerStatsProps {
-    playerData: PlayerData | null;
-    isLoading: boolean;
+    playerData: PlayerData;
+    iconUrl: string;
+    version: string; // Versión de Data Dragon
 }
 
-const RanksDisplay: React.FC = () => {
-    return (
-        <div className="mt-4 p-4 border border-gray-700 rounded-lg bg-gray-800">
-            <h3 className="text-xl font-semibold text-white mb-2">Clasificación (Ranks)</h3>
-            <p className="text-gray-400">Sin datos de clasificación en Solo/Duo o Flex.</p>
-        </div>
-    );
-};
-
-
-// ----------------------------------------------------
-// 2. Componente Principal PlayerStats
-// ----------------------------------------------------
-
-const PlayerStats: React.FC<PlayerStatsProps> = ({ playerData, isLoading }) => {
+const PlayerStats: React.FC<PlayerStatsProps> = ({ playerData, iconUrl, version }) => {
     
-    // Estado para guardar la versión de LOL dinámicamente
-    const [lolVersion, setLolVersion] = useState<string | null>(null);
-
-    // OBTENER LA VERSIÓN MÁS RECIENTE DE DDRAGON
-    useEffect(() => {
-        const fetchLolVersion = async () => {
-            try {
-                // Llama al endpoint de DDragon para obtener todas las versiones
-                const response = await fetch('https://ddragon.leagueoflegends.com/api/versions.json');
-                const versions = await response.json();
-                
-                // Usamos la versión más reciente (primer elemento)
-                if (versions && versions.length > 0) {
-                    setLolVersion(versions[0]);
-                } else {
-                    // Fallback si la lista está vacía
-                    setLolVersion('14.24.1'); 
-                }
-            } catch (error) {
-                console.error("Error al obtener la versión de LoL (Usando Fallback):", error);
-                setLolVersion('14.24.1'); // Versión de fallback estable
-            }
-        };
-
-        if (!lolVersion) {
-            fetchLolVersion();
+    // Función de ayuda para obtener la URL del icono de rango (ejemplo)
+    const getRankIconUrl = (rank: string) => {
+        const tier = rank.split(' ')[0].toLowerCase(); // Ej: 'silver'
+        if (tier === 'unranked') {
+            return 'https://placehold.co/100x100/333333/ffffff?text=UNRANKED';
         }
-    }, [lolVersion]);
-    
-    // --- Lógica de Carga y Espera de Recursos ---
+        // Usando una URL de ejemplo
+        // Nota: En una app real, esta URL provendría de tu propio CDN o Data Dragon
+        return `https://opgg-static.akamaized.net/images/medals_new/${tier}_3.png`; 
+    };
 
-    // Esperar a que los datos del jugador y la versión de LoL estén listos
-    if (isLoading || !lolVersion) { 
-        return <div className="text-center text-white p-10">Cargando datos y recursos...</div>;
-    }
-
-    if (!playerData) {
-        // Muestra la interfaz inicial vacía
-        return (
-             <div className="player-stats-container max-w-xl mx-auto p-4 bg-gray-900 rounded-xl shadow-lg">
-                <h1 className="text-3xl font-bold text-white mb-4">EliteGG Tracker 🎮</h1>
-                <p className="text-gray-400 mb-6">
-                    Busca cualquier Riot ID (NombreDeJuego#TAG) para ver estadísticas de League of Legends.
-                </p>
-                <div className="flex items-center space-x-2 text-sm text-gray-500 mt-6 border-t border-gray-700 pt-4">
-                    <span className="font-bold text-white">👤</span>
-                    <span className="text-gray-400">Nivel | Región:</span>
-                </div>
-                <RanksDisplay />
-            </div>
-        );
-    }
-    
-    // --- Lógica de Renderizado con Datos ---
-
-    const { gameName, tagLine, summonerLevel, profileIconId, regionPlataforma } = playerData;
-    
-    // 🚨 IMPLEMENTACIÓN FINAL: CONSTRUCCIÓN DE LA URL DINÁMICA
-    // Esto toma la versión de lolVersion (ej: 15.19.1) y el profileIconId del jugador (ej: 6621)
-    const iconUrl = `https://ddragon.leagueoflegends.com/cdn/${lolVersion}/img/profileicon/${profileIconId}.png`;
-
-    // DEBUG: Imprime la URL completa para verificar
-    console.log(`[DEBUG] URL final del icono: ${iconUrl}`);
-    
     return (
-        <div className="player-stats-container max-w-xl mx-auto p-4 bg-gray-900 rounded-xl shadow-lg">
+        <div className="p-6 md:p-10 bg-gray-900 rounded-2xl shadow-inner border border-blue-500/30">
             
-            <h1 className="text-3xl font-bold text-white mb-4">EliteGG Tracker 🎮</h1>
-            
-            {/* Contenedor del Icono y el Riot ID */}
-            <div className="flex items-center space-x-4 mb-4 border-b border-gray-700 pb-4">
+            {/* Cabecera del Perfil */}
+            <header className="flex flex-col md:flex-row items-center border-b border-gray-700 pb-6 mb-6">
                 
-                {/* IMAGEN DEL PERFIL */}
-                <div className="relative">
+                {/* Icono de Perfil y Nivel */}
+                <div className="relative mb-4 md:mb-0 md:mr-6">
                     <img 
-                        src={iconUrl} // <-- Usa la URL dinámica que cambia por cada jugador
-                        alt={`Icono de Invocador: ${gameName}`} 
-                        className="w-20 h-20 rounded-full object-cover border-4 border-blue-500"
-                        onError={(e) => { 
-                             console.error(`ERROR Carga Imagen. Revise la URL fallida manualmente: ${iconUrl}`);
-                        }}
+                        src={iconUrl} 
+                        alt={`Profile Icon ${playerData.profileIconId}`} 
+                        className="w-24 h-24 rounded-xl border-4 border-blue-500 shadow-md object-cover"
+                        // Fallback por si la URL del ícono falla
+                        onError={(e) => e.currentTarget.src = `https://ddragon.leagueoflegends.com/cdn/${version}/img/profileicon/29.png`}
                     />
-                    {/* Nivel superpuesto en el icono */}
-                    <span className="absolute bottom-[-10px] left-1/2 transform -translate-x-1/2 bg-gray-700 text-white text-xs font-bold px-2 py-0.5 rounded-full border-2 border-gray-900">
-                        {summonerLevel}
+                    <span className="absolute bottom-[-10px] right-[-10px] bg-gray-700 text-xs font-bold px-3 py-1 rounded-full border-2 border-gray-900 shadow-lg">
+                        Lv. {playerData.summonerLevel}
                     </span>
                 </div>
 
-                <div>
-                    {/* RIOT ID BUSCADO */}
-                    <div className="text-2xl font-extrabold text-blue-400">
-                        {gameName}#{tagLine}
-                    </div>
+                {/* Nombre y Región */}
+                <div className="text-center md:text-left">
+                    <h2 className="text-3xl font-extrabold text-blue-300">
+                        {playerData.gameName}
+                        <span className="text-gray-400 text-xl ml-2 font-normal">#{playerData.tagLine}</span>
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-1">
+                        PUUID: {playerData.puuid.substring(0, 12)}... | Región: {playerData.platformId}
+                    </p>
+                    <p className="text-lg text-blue-500 font-semibold mt-2">
+                        Puntuación de Maestría Total: <span className="text-yellow-400">{playerData.masteryScore}</span>
+                    </p>
+                </div>
+            </header>
 
-                    {/* REGIÓN debajo del nombre */}
-                    <div className="text-sm text-gray-400 mt-1">
-                        Región: {regionPlataforma.toUpperCase()}
+            {/* Estadísticas Clave */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                
+                {/* Columna de Rankeada (Solo/Duo) */}
+                <div className="bg-gray-800 p-5 rounded-lg border border-gray-700">
+                    <h3 className="text-xl font-bold mb-3 text-white flex items-center">
+                        <span className="text-xl mr-2">⚔️</span> Clasificatoria Solo/Duo
+                    </h3>
+                    <div className="flex items-center space-x-4">
+                        <img 
+                            src={getRankIconUrl(playerData.rank)} 
+                            alt={playerData.rank} 
+                            className="w-20 h-20"
+                            onError={(e) => e.currentTarget.src = 'https://placehold.co/80x80/000/fff?text=RANK'}
+                        />
+                        <div>
+                            <p className="text-gray-400 text-sm">Rango Actual</p>
+                            <p className="text-3xl font-black" style={{ color: playerData.rank === 'Unranked' ? '#aaa' : '#00bfa5' }}>
+                                {playerData.rank}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">Simulado / League-V4 Pendiente</p>
+                        </div>
                     </div>
                 </div>
+
+                {/* Columna de Maestría y Partidas */}
+                <div className="bg-gray-800 p-5 rounded-lg border border-gray-700">
+                    <h3 className="text-xl font-bold mb-3 text-white flex items-center">
+                        <span className="text-xl mr-2">🌟</span> Maestría
+                    </h3>
+                    <p className="text-gray-400">Las maestrías de tus campeones más jugados se mostrarán aquí. (Match-V5/Mastery-V4)</p>
+                    <div className="mt-4">
+                        <button className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 shadow-md">
+                            Ver Historial de Partidas
+                        </button>
+                    </div>
+                </div>
+
             </div>
 
-            {/* SECCIÓN DE CLASIFICACIÓN */}
-            <RanksDisplay />
-            
         </div>
     );
 };

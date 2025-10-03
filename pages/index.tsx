@@ -1,16 +1,36 @@
 import React, { useState, useCallback } from 'react';
 import RiotIdSearchBar from '../components/RiotIdSearchBar';
+import PlayerStats from '../components/PlayerStats'; 
+import RiotLoginButton from '../components/RiotLoginButton'; 
 import axios from 'axios';
 import Head from 'next/head';
 
-// Interfaz para los datos del jugador (Simplificado)
+// ----------------------------------------------------
+// CONSTANTES Y UTILIDADES
+// ----------------------------------------------------
+
+const LOL_VERSION = '15.19.1'; // Versión actual de Data Dragon (ajustar si es necesario)
+
+// Función para obtener la URL del icono de perfil
+const getIconUrl = (iconId: number, version: string = LOL_VERSION): string => {
+    return `https://ddragon.leagueoflegends.com/cdn/${version}/img/profileicon/${iconId}.png`;
+};
+
+// ----------------------------------------------------
+// INTERFACES
+// ----------------------------------------------------
+
+// Interfaz que coincide con los datos que devuelve /api/riot.ts
 interface PlayerData {
-    name: string;
-    profileIconId: number;
+    gameName: string;
+    tagLine: string;
+    profileIconId: number; 
     summonerLevel: number;
     puuid: string;
-    region: string;
-    ranks: any[]; // Aquí irían los datos de rank (Solo/Duo, Flex)
+    platformId: string; // Región (ej: EUW1)
+    summonerId: string;
+    rank: string;
+    masteryScore: number;
 }
 
 // Interfaz para el estado de la aplicación
@@ -19,6 +39,45 @@ interface AppState {
     loading: boolean;
     error: string | null;
 }
+
+// Interfaz para búsquedas recientes (Usando 'platformId')
+interface RecentSearch {
+    gameName: string;
+    tagLine: string;
+    platformId: string; 
+    profileIconId: number;
+}
+
+// ----------------------------------------------------
+// LÓGICA DE BÚSQUEDAS RECIENTES (Almacenamiento Local)
+// ----------------------------------------------------
+
+const saveRecentSearch = (newSearch: RecentSearch) => {
+    try {
+        const storageKey = 'elitegg_recent_searches';
+        const searchesString = localStorage.getItem(storageKey);
+        let searches: RecentSearch[] = searchesString ? JSON.parse(searchesString) : [];
+        
+        const uniqueKey = `${newSearch.gameName}#${newSearch.tagLine}`;
+        
+        // Eliminar duplicado si ya existe
+        searches = searches.filter(search => 
+            `${search.gameName}#${search.tagLine}` !== uniqueKey
+        );
+        
+        searches.unshift(newSearch);
+        searches = searches.slice(0, 5); // Mantener solo 5 búsquedas
+        
+        localStorage.setItem(storageKey, JSON.stringify(searches));
+
+    } catch (e) {
+        console.error("Error al acceder a localStorage:", e);
+    }
+};
+
+// ----------------------------------------------------
+// COMPONENTE HOME (PÁGINA PRINCIPAL)
+// ----------------------------------------------------
 
 const Home: React.FC = () => {
     const [state, setState] = useState<AppState>({
@@ -32,19 +91,26 @@ const Home: React.FC = () => {
         setState(prev => ({ ...prev, loading: true, error: null, data: null }));
 
         try {
-            // Llama a la función API en el servidor de Vercel: /api/riot/player-data
-            const response = await axios.get('/api/riot/player-data', {
+            // Nota: Aquí se asume que tienes un backend que maneja la API de Riot Games
+            const response = await axios.get('/api/riot', {
                 params: {
-                    riotId,
-                    tagLine,
-                    // Se asume la región euw1 por defecto para el ejemplo
-                    regionLoL: 'euw1', 
+                    gameName: riotId,
+                    tagLine: tagLine,
                 }
             });
 
-            // Si es exitoso, actualiza los datos
+            const playerData = response.data as PlayerData;
+
+            // Guardar la búsqueda reciente (usando platformId)
+            saveRecentSearch({
+                gameName: playerData.gameName,
+                tagLine: playerData.tagLine,
+                platformId: playerData.platformId, 
+                profileIconId: playerData.profileIconId,
+            });
+
             setState({
-                data: response.data as PlayerData,
+                data: playerData,
                 loading: false,
                 error: null,
             });
@@ -52,8 +118,8 @@ const Home: React.FC = () => {
         } catch (err) {
             let errorMessage = 'Un error desconocido ocurrió.';
             if (axios.isAxiosError(err) && err.response) {
-                // Capturamos el error enviado por el backend
-                errorMessage = err.response.data.error || errorMessage;
+                // Mensaje de error personalizado del backend o genérico
+                errorMessage = err.response.data.error || `Error ${err.response.status}: Jugador no encontrado.`;
             }
             
             setState({
@@ -64,24 +130,7 @@ const Home: React.FC = () => {
         }
     }, []);
 
-    // Helper para mostrar la clasificación
-    const renderRanks = (ranks: any[]) => {
-        if (!ranks || ranks.length === 0) {
-            return <p className="text-gray-400 mt-2">Sin datos de clasificación en Solo/Duo o Flex.</p>;
-        }
-
-        return (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                {ranks.map((rank, index) => (
-                    <div key={index} className="bg-gray-800 p-4 rounded-lg shadow-md border-l-4 border-blue-500">
-                        <p className="font-bold text-lg text-white">{rank.queueType === 'RANKED_SOLO_5x5' ? 'Solo/Duo' : 'Flex'}</p>
-                        <p className="text-xl font-extrabold text-blue-400">{rank.tier} {rank.rank}</p>
-                        <p className="text-sm text-gray-400">{rank.leaguePoints} LP | {rank.wins}V / {rank.losses}D</p>
-                    </div>
-                ))}
-            </div>
-        );
-    };
+    const iconUrl = state.data ? getIconUrl(state.data.profileIconId) : '';
 
     return (
         <>
@@ -89,49 +138,58 @@ const Home: React.FC = () => {
                 <title>EliteGG Riot Tracker</title>
                 <script src="https://cdn.tailwindcss.com"></script>
             </Head>
-            <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center p-4">
+            
+            <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center p-4 sm:p-8 font-sans">
+                
                 <header className="py-8 w-full max-w-4xl text-center">
-                    <h1 className="text-4xl font-extrabold text-blue-500">EliteGG Tracker 🎮</h1>
-                    <p className="mt-2 text-gray-400">Busca cualquier Riot ID (NombreDeJuego#TAG) para ver estadísticas de League of Legends.</p>
+                    <h1 className="text-5xl font-extrabold text-blue-500 tracking-tight">EliteGG Tracker 🎮</h1>
+                    <p className="mt-2 text-xl text-gray-400">Busca cualquier Riot ID (NombreDeJuego#TAG) para ver estadísticas de League of Legends.</p>
                 </header>
 
                 <main className="w-full max-w-lg mb-12">
-                    {/* Componente de la barra de búsqueda */}
                     <RiotIdSearchBar onSearch={handleSearch} loading={state.loading} />
                 </main>
 
-                <section className="w-full max-w-4xl p-6 bg-gray-800 rounded-xl shadow-2xl">
-                    {state.loading && (
-                        <div className="flex justify-center items-center py-10">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mr-3"></div>
-                            <p className="text-blue-400">Buscando invocador...</p>
-                        </div>
-                    )}
+                <div className="w-full max-w-lg mb-12">
+                    <p className="text-center text-gray-500 mb-4 font-semibold text-sm">— OBTÉN TUS ESTADÍSTICAS PRIVADAS —</p>
+                    <RiotLoginButton />
+                </div>
 
+                <section className="w-full max-w-4xl p-6 bg-gray-800 rounded-xl shadow-2xl">
+                    
                     {state.error && (
-                        <div className="bg-red-900 p-4 rounded-lg text-red-300 font-semibold border-l-4 border-red-500">
+                        <div className="bg-red-900 p-4 rounded-lg text-red-300 font-semibold border-l-4 border-red-500 mb-6">
                             <p className="font-bold mb-1">¡Error en la búsqueda!</p>
                             <p>{state.error}</p>
                         </div>
                     )}
 
-                    {state.data && (
-                        <div className="bg-gray-700 p-6 rounded-xl">
-                            <div className="flex items-center border-b border-gray-600 pb-4 mb-4">
-                                <span className="inline-block bg-gray-600 p-3 rounded-full text-blue-400 text-2xl">
-                                    👤
-                                </span>
-                                <div className="ml-4">
-                                    <h2 className="text-3xl font-bold text-white">{state.data.name}</h2>
-                                    <p className="text-blue-400 text-lg">Nivel {state.data.summonerLevel} | Región: {state.data.region}</p>
-                                </div>
-                            </div>
-                            
-                            <h3 className="text-2xl font-semibold mt-6 mb-2 text-white">Clasificación (Ranks)</h3>
-                            {renderRanks(state.data.ranks)}
+                    {state.loading && (
+                        <div className="flex justify-center items-center py-10 text-blue-400">
+                            <span className="animate-spin h-8 w-8 border-4 border-blue-400 border-t-transparent rounded-full mr-3"></span>
+                            Cargando datos...
+                        </div>
+                    )}
+
+                    {/* Mostrar PlayerStats solo si state.data existe y no está cargando */}
+                    {state.data && !state.loading && (
+                        <PlayerStats 
+                            playerData={state.data!} // El operador '!' confirma que no es null
+                            iconUrl={iconUrl}
+                            version={LOL_VERSION}
+                        />
+                    )}
+                    
+                    {!state.data && !state.loading && !state.error && (
+                        <div className="p-10 text-center text-gray-500 bg-gray-700/50 rounded-lg">
+                            <p className="text-lg">Inicia tu búsqueda o conéctate con Riot Games para empezar.</p>
                         </div>
                     )}
                 </section>
+                
+                <footer className="mt-12 text-gray-600 text-sm">
+                    <p>Datos proporcionados por la API de Riot Games. Versión LoL: {LOL_VERSION}</p>
+                </footer>
             </div>
         </>
     );
