@@ -8,7 +8,7 @@ interface PlayerData {
     puuid: string;
     summonerId: string;
     summonerLevel: number;      
-    profileIconId: number;     
+    profileIconId: number;     // <-- El ID que cambia por jugador (ej: 6621)
     regionPlataforma: string;  
     gameName: string;          
     tagLine: string;           
@@ -35,26 +35,27 @@ const RanksDisplay: React.FC = () => {
 
 const PlayerStats: React.FC<PlayerStatsProps> = ({ playerData, isLoading }) => {
     
-    // 🚨 IMPLEMENTACIÓN DINÁMICA: Estado para guardar la versión de LOL
+    // Estado para guardar la versión de LOL dinámicamente
     const [lolVersion, setLolVersion] = useState<string | null>(null);
 
-    // OBTENER LA VERSIÓN MÁS RECIENTE AL MONTAR EL COMPONENTE
+    // OBTENER LA VERSIÓN MÁS RECIENTE DE DDRAGON
     useEffect(() => {
         const fetchLolVersion = async () => {
             try {
                 // Llama al endpoint de DDragon para obtener todas las versiones
                 const response = await fetch('https://ddragon.leagueoflegends.com/api/versions.json');
-                if (response.ok) {
-                    const versions = await response.json();
-                    // El primer elemento es la versión más reciente
+                const versions = await response.json();
+                
+                // Usamos la versión más reciente (primer elemento)
+                if (versions && versions.length > 0) {
                     setLolVersion(versions[0]);
                 } else {
-                    // Fallback a una versión conocida si la API falla
+                    // Fallback si la lista está vacía
                     setLolVersion('14.24.1'); 
                 }
             } catch (error) {
-                console.error("Error al obtener la versión de LoL:", error);
-                setLolVersion('14.24.1'); // Versión de fallback
+                console.error("Error al obtener la versión de LoL (Usando Fallback):", error);
+                setLolVersion('14.24.1'); // Versión de fallback estable
             }
         };
 
@@ -63,9 +64,9 @@ const PlayerStats: React.FC<PlayerStatsProps> = ({ playerData, isLoading }) => {
         }
     }, [lolVersion]);
     
-    // --- Lógica de Carga y Estado Vacío ---
+    // --- Lógica de Carga y Espera de Recursos ---
 
-    // El componente espera a que tanto los datos del jugador como la versión de LOL se carguen
+    // Esperar a que los datos del jugador y la versión de LoL estén listos
     if (isLoading || !lolVersion) { 
         return <div className="text-center text-white p-10">Cargando datos y recursos...</div>;
     }
@@ -73,7 +74,7 @@ const PlayerStats: React.FC<PlayerStatsProps> = ({ playerData, isLoading }) => {
     if (!playerData) {
         // Muestra la interfaz inicial vacía
         return (
-            <div className="player-stats-container max-w-xl mx-auto p-4 bg-gray-900 rounded-xl shadow-lg">
+             <div className="player-stats-container max-w-xl mx-auto p-4 bg-gray-900 rounded-xl shadow-lg">
                 <h1 className="text-3xl font-bold text-white mb-4">EliteGG Tracker 🎮</h1>
                 <p className="text-gray-400 mb-6">
                     Busca cualquier Riot ID (NombreDeJuego#TAG) para ver estadísticas de League of Legends.
@@ -91,8 +92,12 @@ const PlayerStats: React.FC<PlayerStatsProps> = ({ playerData, isLoading }) => {
 
     const { gameName, tagLine, summonerLevel, profileIconId, regionPlataforma } = playerData;
     
-    // URL generada con la versión de LOL dinámica
+    // 🚨 IMPLEMENTACIÓN FINAL: CONSTRUCCIÓN DE LA URL DINÁMICA
+    // Esto toma la versión de lolVersion (ej: 15.19.1) y el profileIconId del jugador (ej: 6621)
     const iconUrl = `https://ddragon.leagueoflegends.com/cdn/${lolVersion}/img/profileicon/${profileIconId}.png`;
+
+    // DEBUG: Imprime la URL completa para verificar
+    console.log(`[DEBUG] URL final del icono: ${iconUrl}`);
     
     return (
         <div className="player-stats-container max-w-xl mx-auto p-4 bg-gray-900 rounded-xl shadow-lg">
@@ -105,11 +110,11 @@ const PlayerStats: React.FC<PlayerStatsProps> = ({ playerData, isLoading }) => {
                 {/* IMAGEN DEL PERFIL */}
                 <div className="relative">
                     <img 
-                        src={iconUrl} 
+                        src={iconUrl} // <-- Usa la URL dinámica que cambia por cada jugador
                         alt={`Icono de Invocador: ${gameName}`} 
                         className="w-20 h-20 rounded-full object-cover border-4 border-blue-500"
                         onError={(e) => { 
-                             console.error(`Error al cargar el icono. URL fallida: ${iconUrl}`);
+                             console.error(`ERROR Carga Imagen. Revise la URL fallida manualmente: ${iconUrl}`);
                         }}
                     />
                     {/* Nivel superpuesto en el icono */}
