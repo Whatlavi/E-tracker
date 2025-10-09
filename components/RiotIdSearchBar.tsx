@@ -2,19 +2,41 @@
 import React, { useState, useMemo, useCallback } from 'react';
 // Se ha eliminado 'react-icons' y se usan Emojis para evitar errores de dependencia.
 
-// Define la estructura de un jugador sugerido
+// 1. Define la estructura de un jugador sugerido AÑADIENDO la URL del ícono
 interface SuggestedPlayer {
     gameName: string;
     tagLine: string;
+    profileIconUrl: string; // <-- ¡NUEVO! URL del ícono de perfil para el mock
 }
 
-// Datos de ejemplo para simular la lista de jugadores recientes
+// 2. Datos de ejemplo para simular la lista de jugadores recientes CON FOTOS DE PERFIL
 const DUMMY_PLAYERS: SuggestedPlayer[] = [
-    { gameName: "YIKARMAIY", tagLine: "EUW" },
-    { gameName: "ZEDientodettas", tagLine: "PORFA" },
-    { gameName: "Sung Jin woo", tagLine: "SOUL" },
-    { gameName: "Faker", tagLine: "KR1" },
-    { gameName: "Caps", tagLine: "EUW" },
+    // Se usan URLs de DDragon con la versión 14.24.1 (ejemplo de la última estable)
+    { 
+        gameName: "YIKARMAIY", 
+        tagLine: "EUW", 
+        profileIconUrl: "https://ddragon.leagueoflegends.com/cdn/14.24.1/img/profileicon/29.png" 
+    },
+    { 
+        gameName: "ZEDientodettas", 
+        tagLine: "PORFA", 
+        profileIconUrl: "https://ddragon.leagueoflegends.com/cdn/14.24.1/img/profileicon/666.png" 
+    },
+    { 
+        gameName: "Sung Jin woo", 
+        tagLine: "SOUL", 
+        profileIconUrl: "https://ddragon.leagueoflegends.com/cdn/14.24.1/img/profileicon/777.png" 
+    },
+    { 
+        gameName: "Faker", 
+        tagLine: "KR1", 
+        profileIconUrl: "https://ddragon.leagueoflegends.com/cdn/14.24.1/img/profileicon/512.png" 
+    },
+    { 
+        gameName: "Caps", 
+        tagLine: "EUW", 
+        profileIconUrl: "https://ddragon.leagueoflegends.com/cdn/14.24.1/img/profileicon/900.png" 
+    },
 ];
 
 interface RiotIdSearchBarProps {
@@ -23,11 +45,13 @@ interface RiotIdSearchBarProps {
 }
 
 const RiotIdSearchBar: React.FC<RiotIdSearchBarProps> = ({ onSearch, loading }) => {
+// ... (omitiendo lógica de estado y funciones handleSearch/handleFormSubmit, que no cambian)
+
     const [inputValue, setInputValue] = useState('');
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Lógica para filtrar sugerencias basadas en el input
+    // Lógica para filtrar sugerencias basada en el DUMMY_PLAYERS
     const filteredPlayers = useMemo(() => {
         if (!inputValue) return DUMMY_PLAYERS;
         
@@ -74,7 +98,7 @@ const RiotIdSearchBar: React.FC<RiotIdSearchBarProps> = ({ onSearch, loading }) 
 
     return (
         <div className="relative w-full max-w-lg">
-            {/* INPUT DE BÚSQUEDA */}
+            {/* INPUT DE BÚSQUEDA (Sin cambios) */}
             <form onSubmit={handleFormSubmit} className="flex">
                 <input
                     type="text"
@@ -99,14 +123,14 @@ const RiotIdSearchBar: React.FC<RiotIdSearchBarProps> = ({ onSearch, loading }) 
                 </button>
             </form>
 
-            {/* ERROR DE FORMATO */}
+            {/* ERROR DE FORMATO (Sin cambios) */}
             {error && <p className="mt-2 text-red-500 font-semibold">{error}</p>}
 
             {/* MENÚ DESPLEGABLE DE SUGERENCIAS */}
             {showSuggestions && (
                 <div className="absolute z-10 w-full mt-1 bg-gray-900 border border-gray-700 rounded shadow-2xl p-2 max-h-80 overflow-y-auto">
                     
-                    {/* BARRA DE CATEGORÍAS (Emojis: 🕒 Recientes, ⭐ Favoritos) */}
+                    {/* BARRA DE CATEGORÍAS (Sin cambios) */}
                     <div className="flex text-sm border-b border-gray-700 mb-2">
                         <div className="py-2 px-3 text-blue-400 font-bold border-r border-gray-700 flex items-center">
                             <span className="mr-2 text-lg">🕒</span> RECIENTES
@@ -116,7 +140,7 @@ const RiotIdSearchBar: React.FC<RiotIdSearchBarProps> = ({ onSearch, loading }) 
                         </div>
                     </div>
                     
-                    {/* LISTA DE JUGADORES SUGERIDOS */}
+                    {/* LISTA DE JUGADORES SUGERIDOS CON IMAGEN */}
                     {filteredPlayers.length > 0 ? (
                         <div className="space-y-1">
                             {filteredPlayers.map((player, index) => (
@@ -125,8 +149,17 @@ const RiotIdSearchBar: React.FC<RiotIdSearchBarProps> = ({ onSearch, loading }) 
                                     onClick={() => handleSuggestionClick(player)}
                                     className="flex items-center p-2 rounded cursor-pointer hover:bg-gray-800 transition"
                                 >
-                                    {/* Icono de Riot ID reemplazado por Emoji de Videojuego (🎮) */}
-                                    <span className="text-blue-500 mr-3 text-2xl">🎮</span>
+                                    {/* 3. IMAGEN DEL ÍCONO DE PERFIL REAL */}
+                                    <img 
+                                        src={player.profileIconUrl} 
+                                        alt="Icono de perfil" 
+                                        className="w-8 h-8 rounded-full border border-gray-600 mr-3 object-cover"
+                                        onError={(e) => {
+                                            // Fallback: Si la URL simulada falla, usa un placeholder
+                                            e.currentTarget.onerror = null; 
+                                            e.currentTarget.src = "https://placehold.co/32x32/333333/ffffff?text=?"
+                                        }}
+                                    />
                                     <div className="text-left">
                                         <span className="font-semibold text-white">{player.gameName}</span>
                                         <span className="text-gray-400 text-sm ml-2">#{player.tagLine}</span>

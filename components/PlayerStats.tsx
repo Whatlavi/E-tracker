@@ -75,7 +75,7 @@ const PlayerStats: React.FC<PlayerStatsProps> = ({ playerData, isLoading }) => {
         // Muestra la interfaz inicial vacía
         return (
              <div className="player-stats-container max-w-xl mx-auto p-4 bg-gray-900 rounded-xl shadow-lg">
-                <h1 className="text-3xl font-bold text-white mb-4">EliteGG Tracker 🎮</h1>
+                <h1 className="text-3xl font-bold text-white mb-4">EliteGG</h1>
                 <p className="text-gray-400 mb-6">
                     Busca cualquier Riot ID (NombreDeJuego#TAG) para ver estadísticas de League of Legends.
                 </p>
@@ -102,7 +102,7 @@ const PlayerStats: React.FC<PlayerStatsProps> = ({ playerData, isLoading }) => {
     return (
         <div className="player-stats-container max-w-xl mx-auto p-4 bg-gray-900 rounded-xl shadow-lg">
             
-            <h1 className="text-3xl font-bold text-white mb-4">EliteGG Tracker 🎮</h1>
+            <h1 className="text-3xl font-bold text-white mb-4">EliteGG</h1>
             
             {/* Contenedor del Icono y el Riot ID */}
             <div className="flex items-center space-x-4 mb-4 border-b border-gray-700 pb-4">

@@ -86,7 +86,8 @@ const Home: React.FC = () => {
     return (
         <>
             <Head>
-                <title>EliteGG Riot Tracker</title>
+                <title>EliteGG</title>
+                <link rel="icon" href="favicon.ico" />
                 <script src="https://cdn.tailwindcss.com"></script>
             </Head>
             <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center p-4">
