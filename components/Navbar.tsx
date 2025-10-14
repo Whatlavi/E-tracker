@@ -24,17 +24,6 @@ const VERSION_API_URL = 'https://ddragon.leagueoflegends.com/api/versions.json';
 const FALLBACK_VERSION = '14.19.1'; 
 const DEFAULT_ICON_ID = 29;
 
-// Definimos el tipo de datos que vamos a devolver para el historial de partidas
-interface MatchData {
-    matchId: string;
-    gameType: string;
-    win: boolean;
-    championName: string;
-    kda: string;
-    gameDuration: string;
-    championIconUrl: string;
-}
-
 // Tipo de datos para las estadísticas de Liga (Ranked)
 interface LeagueStats {
     tier: string;
@@ -47,9 +36,21 @@ interface LeagueStats {
     totalMatches: number;
 }
 
+// Definimos el tipo de datos que vamos a devolver para el historial de partidas
+interface MatchData {
+    matchId: string;
+    gameType: string;
+    win: boolean;
+    championName: string;
+    kda: string; // Formato "K/D/A"
+    gameDuration: string;
+    championIconUrl: string;
+    teamPosition: 'TOP' | 'JUNGLE' | 'MIDDLE' | 'BOTTOM' | 'UTILITY' | 'NONE'; // Posición para calcular el rol principal
+    gameEndTimestamp: number; // Para calcular "Última Actualización"
+}
 
 /**
- * Función auxiliar para realizar fetch con reintentos y manejar errores 403 (Clave expirada).
+ * Función auxiliar para realizar fetch con reintentos y manejar errores 403.
  */
 const fetchWithRetry = async (url: string, retries = 3) => {
     for (let i = 0; i < retries; i++) {
@@ -74,38 +75,131 @@ const fetchWithRetry = async (url: string, retries = 3) => {
 };
 
 /**
- * Obtiene el nombre del campeón y el KDA de un jugador en una partida específica.
+ * Calcula el KDA promedio a partir del historial de partidas.
+ */
+const calculateAverageKDA = (matches: MatchData[]): string => {
+    if (matches.length === 0) return '0.00';
+
+    let totalKills = 0;
+    let totalDeaths = 0;
+    let totalAssists = 0;
+
+    matches.forEach(match => {
+        // La kda string es 'kills/deaths/assists'
+        const parts = match.kda.split('/').map(p => parseInt(p.trim(), 10));
+        if (parts.length === 3) {
+            totalKills += parts[0];
+            totalDeaths += parts[1];
+            totalAssists += parts[2];
+        }
+    });
+
+    if (totalDeaths === 0) {
+        if (totalKills > 0 || totalAssists > 0) return 'Perfect'; 
+        return '0.00';
+    }
+
+    const kdaValue = (totalKills + totalAssists) / totalDeaths;
+    return kdaValue.toFixed(2);
+};
+
+/**
+ * Encuentra el campeón y rol principal de las partidas recientes.
+ */
+const findMainChampionAndRole = (matches: MatchData[]): { mainChampion: string, mainRole: string } => {
+    if (matches.length === 0) return { mainChampion: 'N/A', mainRole: 'N/A' };
+
+    const championCounts: { [key: string]: number } = {};
+    const roleCounts: { [key: string]: number } = {};
+
+    matches.forEach(match => {
+        championCounts[match.championName] = (championCounts[match.championName] || 0) + 1;
+        
+        if (match.teamPosition !== 'NONE') {
+            roleCounts[match.teamPosition] = (roleCounts[match.teamPosition] || 0) + 1;
+        }
+    });
+
+    let mainChampion = 'N/A';
+    let maxChampCount = 0;
+    for (const champ in championCounts) {
+        if (championCounts[champ] > maxChampCount) {
+            maxChampCount = championCounts[champ];
+            mainChampion = champ;
+        }
+    }
+
+    let mainRole = 'NONE';
+    let maxRoleCount = 0;
+    for (const role in roleCounts) {
+        if (roleCounts[role] > maxRoleCount) {
+            maxRoleCount = roleCounts[role];
+            mainRole = role;
+        }
+    }
+    
+    // Mapeo de Riot API a nombres en español
+    const roleMap: { [key: string]: string } = {
+        'TOP': 'Top',
+        'JUNGLE': 'Jungla',
+        'MIDDLE': 'Medio',
+        'BOTTOM': 'Bot',
+        'UTILITY': 'Soporte',
+        'NONE': 'Flexible'
+    };
+    
+    return { 
+        mainChampion: mainChampion, 
+        mainRole: roleMap[mainRole] || 'Flexible' 
+    };
+};
+
+/**
+ * Formatea el tiempo transcurrido desde el último partido.
+ */
+const timeSinceLastMatch = (timestampMs: number): string => {
+    if (timestampMs === 0) return 'Nunca';
+    
+    const seconds = Math.floor((Date.now() - timestampMs) / 1000);
+    let interval = seconds / 31536000;
+    
+    if (interval > 1) return Math.floor(interval) + (Math.floor(interval) === 1 ? ' año' : ' años');
+    interval = seconds / 2592000;
+    if (interval > 1) return Math.floor(interval) + (Math.floor(interval) === 1 ? ' mes' : ' meses');
+    interval = seconds / 86400;
+    if (interval > 1) return Math.floor(interval) + (Math.floor(interval) === 1 ? ' día' : ' días');
+    interval = seconds / 3600;
+    if (interval > 1) return Math.floor(interval) + (Math.floor(interval) === 1 ? ' hora' : ' horas');
+    interval = seconds / 60;
+    if (interval > 1) return Math.floor(interval) + (Math.floor(interval) === 1 ? ' minuto' : ' minutos');
+    
+    return 'Hace poco';
+};
+
+/**
+ * Obtiene el nombre del campeón, KDA, y posición de un jugador en una partida específica.
  */
 const getMatchDetails = (matchData: any, puuid: string, ddragonVersion: string): MatchData => {
-    // 1. Encontrar la información del jugador en los participantes
     const participant = matchData.info.participants.find((p: any) => p.puuid === puuid);
     
     if (!participant) {
+        // Fallback si no se encuentra el participante
         return {
-            matchId: matchData.metadata.matchId,
-            gameType: 'Desconocido',
-            win: false,
-            championName: 'No Encontrado',
-            kda: 'N/A',
-            gameDuration: 'N/A',
-            championIconUrl: `${DDRAGON_BASE_URL}${ddragonVersion}/img/champion/Summoner.png` // Ícono genérico
+            matchId: matchData.metadata.matchId, gameType: 'Desconocido', win: false, championName: 'No Encontrado', 
+            kda: 'N/A', gameDuration: 'N/A', championIconUrl: `${DDRAGON_BASE_URL}${ddragonVersion}/img/champion/Summoner.png`,
+            teamPosition: 'NONE', gameEndTimestamp: matchData.info.gameEndTimestamp || 0
         };
     }
     
-    // 2. Extraer KDA
-    const kills = participant.kills;
-    const deaths = participant.deaths;
-    const assists = participant.assists;
+    const { kills, deaths, assists, championName, teamPosition } = participant;
     const kdaString = `${kills}/${deaths}/${assists}`;
     
-    // 3. Extraer duración y tipo de juego
     const durationSeconds = matchData.info.gameDuration;
     const minutes = Math.floor(durationSeconds / 60);
     const seconds = durationSeconds % 60;
     const gameDuration = `${minutes} min ${seconds} seg`;
     
     let gameType = matchData.info.queueId;
-    // Esto es simplificado. Se debería mapear queueId a un nombre legible (Ranked Solo/Duo, Normal, ARAM, etc.)
     if (gameType === 420) gameType = 'Ranked Solo/Duo';
     else if (gameType === 400) gameType = 'Normal Draft';
     else if (gameType === 430) gameType = 'Normal Blind';
@@ -113,8 +207,6 @@ const getMatchDetails = (matchData: any, puuid: string, ddragonVersion: string):
     else if (gameType === 450) gameType = 'ARAM';
     else gameType = 'Otros';
     
-    // 4. Construir URL del ícono del campeón
-    const championName = participant.championName;
     const championIconUrl = `${DDRAGON_BASE_URL}${ddragonVersion}/img/champion/${championName}.png`;
 
     return {
@@ -125,6 +217,8 @@ const getMatchDetails = (matchData: any, puuid: string, ddragonVersion: string):
         kda: kdaString,
         gameDuration: gameDuration,
         championIconUrl: championIconUrl,
+        teamPosition: teamPosition || 'NONE',
+        gameEndTimestamp: matchData.info.gameEndTimestamp || 0,
     };
 };
 
@@ -144,14 +238,8 @@ const getLeagueDataFromRiot = async (puuid: string): Promise<LeagueStats> => {
     if (!soloDuoEntry) {
         // Retorna UNRANKED si no se encuentra la entrada de Solo/Duo
         return {
-            tier: 'UNRANKED',
-            rank: '',
-            leaguePoints: 0,
-            wins: 0,
-            losses: 0,
-            winRate: 'N/A',
-            mockRankIcon: '/ranks/unranked.png', // Imagen de Unranked
-            totalMatches: 0,
+            tier: 'UNRANKED', rank: '', leaguePoints: 0, wins: 0, losses: 0, winRate: 'N/A', 
+            mockRankIcon: '/ranks/unranked.png', totalMatches: 0,
         };
     }
     
@@ -169,7 +257,6 @@ const getLeagueDataFromRiot = async (puuid: string): Promise<LeagueStats> => {
         wins: wins,
         losses: losses,
         winRate: winRate,
-        // **ESTO USA LA IMAGEN DE RANK LOCAL EN public/ranks**
         mockRankIcon: `/ranks/${tierLower}.png`, 
         totalMatches: totalMatches,
     };
@@ -177,13 +264,12 @@ const getLeagueDataFromRiot = async (puuid: string): Promise<LeagueStats> => {
 
 
 /**
- * Realiza las llamadas REALES a la API de Riot Games para obtener el profileIconId, nivel, partidas y RANGO.
+ * Realiza las llamadas REALES a la API de Riot Games para obtener todos los datos del invocador.
  */
 const getSummonerDataFromRiot = async (gameName: string, tagLine: string, ddragonVersion: string) => {
     
     const encodedGameName = encodeURIComponent(gameName);
     const encodedTagLine = encodeURIComponent(tagLine);
-    let leagueData: LeagueStats;
 
     // 1. Obtener PUUID (API Account)
     const accountApiUrl = `https://${ACCOUNT_API_SERVER}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodedGameName}/${encodedTagLine}?api_key=${RIOT_API_KEY}`;
@@ -193,9 +279,6 @@ const getSummonerDataFromRiot = async (gameName: string, tagLine: string, ddrago
     const puuid = accountData.puuid; 
 
     if (!puuid) {
-        if (accountData.status && accountData.status.status_code === 404) {
-            throw new Error("Invocador no encontrado. Verifica Nombre y Tagline.");
-        }
         throw new Error("No se pudo obtener el PUUID.");
     }
 
@@ -211,23 +294,25 @@ const getSummonerDataFromRiot = async (gameName: string, tagLine: string, ddrago
         throw new Error("No se encontró el ID de ícono o el Nivel del invocador.");
     }
 
-    // 2.5. OBTENER DATOS DE LIGA (RANKED REAL)
+    // 3. OBTENER DATOS DE LIGA (RANKED REAL)
+    let leagueData: LeagueStats;
     try {
         leagueData = await getLeagueDataFromRiot(puuid);
     } catch (e) {
         console.error("Fallo al obtener datos de Liga. Usando UNRANKED por defecto.", e);
+        // Fallback de datos de liga
         leagueData = {
             tier: 'UNRANKED', rank: '', leaguePoints: 0, wins: 0, losses: 0, winRate: 'N/A', mockRankIcon: '/ranks/unranked.png', totalMatches: 0
         };
     }
 
-    // 3. Obtener los últimos 5 Match IDs (API Match)
+    // 4. Obtener los últimos 5 Match IDs (API Match)
     const matchHistoryUrl = `https://${ACCOUNT_API_SERVER}.api.riotgames.com/lol/match/v5/matches/by-puuid/${encodedPuuid}/ids?start=0&count=5&api_key=${RIOT_API_KEY}`;
     
     const matchHistoryResponse = await fetchWithRetry(matchHistoryUrl);
     const matchIds: string[] = await matchHistoryResponse.json();
     
-    // 4. Obtener los detalles de cada partida
+    // 5. Obtener los detalles de cada partida
     const matchDetailsPromises = matchIds.map(matchId => {
         const matchDetailsUrl = `https://${ACCOUNT_API_SERVER}.api.riotgames.com/lol/match/v5/matches/${matchId}?api_key=${RIOT_API_KEY}`;
         return fetchWithRetry(matchDetailsUrl).then(res => res.json());
@@ -235,7 +320,7 @@ const getSummonerDataFromRiot = async (gameName: string, tagLine: string, ddrago
     
     const rawMatchDetails = await Promise.all(matchDetailsPromises);
     
-    // 5. Procesar los detalles para obtener el formato deseado
+    // 6. Procesar los detalles para obtener el formato deseado
     const matchHistory: MatchData[] = rawMatchDetails.map(matchDetail => 
         getMatchDetails(matchDetail, puuid, ddragonVersion)
     );
@@ -250,7 +335,7 @@ const getSummonerDataFromRiot = async (gameName: string, tagLine: string, ddrago
 };
 
 // =================================================================
-// 2. HOOK PERSONALIZADO: useSummonerIcon
+// 2. HOOK PERSONALIZADO: useSummonerIcon (Contiene toda la información real)
 // =================================================================
 
 interface IconState {
@@ -263,7 +348,11 @@ interface IconState {
     matchHistory: MatchData[]; 
     matchHistoryLoading: boolean;
     matchHistoryError: string | null;
-    leagueStats: LeagueStats | null; // Estado para las estadísticas de Liga
+    leagueStats: LeagueStats | null; // **DATOS REALES**
+    averageKda: string; // **DATO REAL**
+    mainChampion: string; // **DATO REAL**
+    mainRole: string; // **DATO REAL**
+    lastUpdateTime: string; // **DATO REAL** (tiempo desde la última partida)
 }
 
 let state: IconState;
@@ -279,7 +368,11 @@ const useSummonerIcon = (gameName: string | null, tagLine: string | null): IconS
         matchHistory: [],
         matchHistoryLoading: false,
         matchHistoryError: null,
-        leagueStats: null, // Inicialización
+        leagueStats: null,
+        averageKda: '0.00',
+        mainChampion: 'N/A',
+        mainRole: 'N/A',
+        lastUpdateTime: 'N/A',
     });
     
     state = localState;
@@ -292,12 +385,14 @@ const useSummonerIcon = (gameName: string | null, tagLine: string | null): IconS
             matchHistoryLoading: true, 
             matchHistoryError: null,
             matchHistory: [],
-            leagueStats: null, // Resetear stats de liga
+            leagueStats: null,
+            averageKda: '...',
+            mainChampion: '...',
+            mainRole: '...',
+            lastUpdateTime: '...',
         }));
         
         let currentVersion = FALLBACK_VERSION;
-        let finalIconId = DEFAULT_ICON_ID;
-        let finalSummonerLevel = 0; 
         
         // --- Paso 1: Obtener la versión más reciente del juego ---
         try {
@@ -315,38 +410,56 @@ const useSummonerIcon = (gameName: string | null, tagLine: string | null): IconS
         // --- Paso 2: Obtener datos del invocador, Partidas y Rango (LLAMADA REAL) ---
         try {
             const data = await getSummonerDataFromRiot(gn, tag, currentVersion);
-            finalIconId = data.profileIconId;
-            finalSummonerLevel = data.summonerLevel; 
+            
+            // **Cálculo de datos reales basados en el historial de partidas**
+            const calculatedKda = calculateAverageKDA(data.matchHistory);
+            const { mainChampion, mainRole } = findMainChampionAndRole(data.matchHistory);
+            
+            let lastMatchTimestamp = 0;
+            if (data.matchHistory.length > 0) {
+                // El partido más reciente es el primero en la lista (si la API lo ordena por defecto)
+                lastMatchTimestamp = data.matchHistory[0].gameEndTimestamp;
+            }
+            const lastUpdateText = timeSinceLastMatch(lastMatchTimestamp);
 
-            // Éxito: Actualizar el estado con todos los datos
-            const url = `${DDRAGON_BASE_URL}${currentVersion}/img/profileicon/${finalIconId}.png`;
+            // Éxito: Actualizar el estado con todos los datos REALES
+            const url = `${DDRAGON_BASE_URL}${currentVersion}/img/profileicon/${data.profileIconId}.png`;
             
             setLocalState(prev => ({
                 ...prev,
-                iconId: finalIconId,
+                iconId: data.profileIconId,
                 iconUrl: url,
                 loading: false,
-                summonerLevel: finalSummonerLevel,
+                summonerLevel: data.summonerLevel,
                 matchHistory: data.matchHistory,
                 matchHistoryLoading: false,
                 matchHistoryError: null,
-                leagueStats: data.leagueStats, // GUARDAR DATOS DE LIGA REALES
+                leagueStats: data.leagueStats, 
+                averageKda: calculatedKda,
+                mainChampion: mainChampion,
+                mainRole: mainRole,
+                lastUpdateTime: lastUpdateText,
             }));
 
         } catch (error) {
             const errorMessage = (error as Error).message;
             console.error("La llamada REAL a la API de Riot falló:", errorMessage);
             
-            // Fallo: Mostrar error y usar datos por defecto/previos (UNRANKED/0 LP)
+            // Fallo: Mostrar error y usar datos por defecto/previos
             setLocalState(prev => ({ 
                 ...prev, 
                 error: `API FALLIDA: ${errorMessage}. Si ves Error 403, tu clave de Riot expiró y debe ser reemplazada.`,
                 loading: false,
                 matchHistoryLoading: false,
                 matchHistoryError: `No se pudo cargar el historial de partidas: ${errorMessage}`,
-                leagueStats: { // Fallback para los stats de Liga (UNRANKED / 0 LP)
+                // Fallback para los stats de Liga (UNRANKED / 0 LP)
+                leagueStats: {
                     tier: 'UNRANKED', rank: '', leaguePoints: 0, wins: 0, losses: 0, winRate: 'N/A', mockRankIcon: '/ranks/unranked.png', totalMatches: 0
                 },
+                averageKda: 'N/A',
+                mainChampion: 'N/A',
+                mainRole: 'N/A',
+                lastUpdateTime: 'N/A',
             }));
         }
 
@@ -368,6 +481,10 @@ const useSummonerIcon = (gameName: string | null, tagLine: string | null): IconS
                  matchHistoryLoading: false,
                  matchHistoryError: null,
                  leagueStats: null,
+                 averageKda: '0.00',
+                 mainChampion: 'N/A',
+                 mainRole: 'N/A',
+                 lastUpdateTime: 'N/A',
                }));
         }
     }, [gameName, tagLine, fetchIcon]);
@@ -503,15 +620,6 @@ const MatchHistoryDisplay: React.FC<MatchHistoryDisplayProps> = ({ matchHistory,
 // 5. COMPONENTE: PLAYER PROFILE PAGE
 // =================================================================
 
-// MOCK DATA solo para elementos que NO se obtienen de la API de Liga/Invocador (KDA, rol, etc.)
-const DUMMY_FALLBACK_STATS = {
-    kda: 'N/A (Cargando de la API)', 
-    mainRole: 'N/A (Cargando de la API)',
-    mainChampion: 'N/A (Cargando de la API)',
-    lastUpdate: 'N/A (Cargando de la API)', 
-};
-
-
 interface PlayerProfilePageProps {
     gameName: string;
     tagLine: string;
@@ -521,7 +629,7 @@ interface PlayerProfilePageProps {
 const PlayerProfilePage: React.FC<PlayerProfilePageProps> = ({ gameName, tagLine, onNavigate }) => {
     const simulatedUrl = `/lol/profile/riot/${gameName}%23${tagLine}/overview`;
     
-    // OBTENEMOS TODOS LOS DATOS (INCLUYENDO LIGA REAL) DEL HOOK
+    // OBTENEMOS TODOS LOS DATOS REALES DEL HOOK
     const { 
         iconUrl, 
         loading, 
@@ -531,47 +639,40 @@ const PlayerProfilePage: React.FC<PlayerProfilePageProps> = ({ gameName, tagLine
         matchHistory, 
         matchHistoryLoading, 
         matchHistoryError,
-        leagueStats 
+        leagueStats,
+        averageKda,
+        mainChampion,
+        mainRole,
+        lastUpdateTime // **Dato Real**
     } = useSummonerIcon(gameName, tagLine);
     
-    // CALCULAR STATS FINALES (USANDO API DATA REAL PARA RANK/LP)
+    // Mapeamos los datos reales del estado a las propiedades del perfil
     const profileStats = useMemo(() => {
-        if (leagueStats) {
-            return {
-                // DATOS REALES OBTENIDOS DE LA API DE LIGA
-                rank: `${leagueStats.tier} ${leagueStats.rank}`, // EJ: "DIAMOND IV"
-                lp: leagueStats.leaguePoints,
-                winRate: leagueStats.winRate,
-                mockRankIcon: leagueStats.mockRankIcon,
-                totalMatches: leagueStats.totalMatches,
-                
-                // Datos Ficticios (DUMMY)
-                kda: DUMMY_FALLBACK_STATS.kda, 
-                mainRole: DUMMY_FALLBACK_STATS.mainRole,
-                mainChampion: DUMMY_FALLBACK_STATS.mainChampion,
-                lastUpdate: DUMMY_FALLBACK_STATS.lastUpdate,
-            };
-        }
-        // Fallback completo si leagueStats es null o loading
+        const fallbackRank = { tier: 'UNRANKED', rank: '', leaguePoints: 0, wins: 0, losses: 0, winRate: 'N/A', mockRankIcon: '/ranks/unranked.png', totalMatches: 0 };
+        const stats = leagueStats || fallbackRank;
+        
         return {
-            rank: 'UNRANKED',
-            lp: 0,
-            winRate: 'N/A',
-            mockRankIcon: '/ranks/unranked.png',
-            totalMatches: 0,
+            // **DATOS REALES DE LIGA**
+            rank: `${stats.tier} ${stats.rank}`, 
+            lp: stats.leaguePoints,
+            winRate: stats.winRate,
+            totalMatches: stats.totalMatches,
+            mockRankIcon: stats.mockRankIcon,
             
-            kda: DUMMY_FALLBACK_STATS.kda,
-            mainRole: DUMMY_FALLBACK_STATS.mainRole,
-            mainChampion: DUMMY_FALLBACK_STATS.mainChampion,
-            lastUpdate: 'N/A',
+            // **DATOS REALES CALCULADOS**
+            kda: averageKda, 
+            mainRole: mainRole,
+            mainChampion: mainChampion,
+            lastUpdate: lastUpdateTime,
         };
-    }, [leagueStats]);
+    }, [leagueStats, averageKda, mainRole, mainChampion, lastUpdateTime]);
 
+    // Usamos las estadísticas reales y calculadas para las tarjetas
     const statCards = [
-        { icon: TrendingUp, title: 'KDA Promedio', value: profileStats.kda, color: 'text-red-400' },
-        { icon: BarChart3, title: 'Tasa de Victorias', value: profileStats.winRate, color: 'text-green-400' },
-        { icon: LayoutGrid, title: 'Partidas Jugadas (Ranked)', value: profileStats.totalMatches.toString(), color: 'text-yellow-400' },
-        { icon: Clock, title: 'Última Actualización', value: profileStats.lastUpdate, color: 'text-blue-400' },
+        { icon: TrendingUp, title: 'KDA Promedio', value: loading ? '...' : profileStats.kda, color: 'text-red-400' },
+        { icon: BarChart3, title: 'Tasa de Victorias (Ranked)', value: loading ? '...' : profileStats.winRate, color: 'text-green-400' },
+        { icon: LayoutGrid, title: 'Partidas Jugadas (Ranked)', value: loading ? '...' : profileStats.totalMatches.toString(), color: 'text-yellow-400' },
+        { icon: Clock, title: 'Última Partida', value: loading ? '...' : profileStats.lastUpdate, color: 'text-blue-400' },
     ];
 
     return (
@@ -618,34 +719,38 @@ const PlayerProfilePage: React.FC<PlayerProfilePageProps> = ({ gameName, tagLine
                             {gameName}
                             <span className="text-gray-400 text-xl font-normal ml-2">#{tagLine}</span>
                         </h1>
-                        <p className="text-lg text-gray-300 font-medium">Rol Principal: <span className="text-teal-400 font-semibold">{profileStats.mainRole}</span></p>
-                        <p className="text-sm text-gray-500 mt-1">Campeón Más Jugado: {profileStats.mainChampion} (ID de Ícono: {iconId})</p>
+                        {/* **DATO REAL** */}
+                        <p className="text-lg text-gray-300 font-medium">Rol Principal: <span className="text-teal-400 font-semibold">{loading ? '...' : profileStats.mainRole}</span></p>
+                        {/* **DATO REAL** */}
+                        <p className="text-sm text-gray-500 mt-1">Campeón Más Jugado: {loading ? '...' : profileStats.mainChampion} (ID de Ícono: {iconId})</p>
                     </div>
 
-                    {/* STATS DE RANKED (REALES OBTENIDOS DE LA API) */}
+                    {/* STATS DE RANKED (REALES) */}
                     <div className="mt-6 md:mt-0 p-4 bg-gray-700 rounded-lg flex items-center shadow-inner">
                         {loading ? (
                             <RotateCw className="w-16 h-16 mr-4 text-teal-400 animate-spin" />
                         ) : (
                              <img 
-                                // **Ruta LOCAL según el tier devuelto por la API (ej: /ranks/diamond.png)**
+                                // **DATO REAL: Ruta LOCAL según el tier de la API**
                                 src={profileStats.mockRankIcon} 
                                 alt="Rango" 
                                 className="w-16 h-16 mr-4"
-                                // Fallback a unranked si la imagen local falla (ej. si no está cargada)
                                 onError={(e) => { (e.target as HTMLImageElement).src = '/ranks/unranked.png'; }} 
                             />
                         )}
                         <div className="text-right">
                             <p className="text-sm text-gray-400">Ranked Solo/Duo</p>
-                            <p className="text-xl font-bold text-yellow-300">{profileStats.rank}</p>
-                            <p className="text-2xl font-extrabold text-white">{profileStats.lp} LP</p>
-                            <p className="text-sm text-gray-400">Tasa de Victorias: {profileStats.winRate}</p>
+                            {/* **DATO REAL** */}
+                            <p className="text-xl font-bold text-yellow-300">{loading ? '...' : profileStats.rank}</p>
+                            {/* **DATO REAL** */}
+                            <p className="text-2xl font-extrabold text-white">{loading ? '...' : profileStats.lp} LP</p>
+                            {/* **DATO REAL** */}
+                            <p className="text-sm text-gray-400">Tasa de Victorias: {loading ? '...' : profileStats.winRate}</p>
                         </div>
                     </div>
                 </div>
 
-                {/* CUERPO - Tarjetas de Estadísticas */}
+                {/* CUERPO - Tarjetas de Estadísticas (REALES) */}
                 <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                     {statCards.map((card, index) => (
                         <div key={index} className="bg-gray-800 p-5 rounded-lg shadow-xl border-l-4 border-teal-500 transition hover:bg-gray-700">
@@ -653,7 +758,7 @@ const PlayerProfilePage: React.FC<PlayerProfilePageProps> = ({ gameName, tagLine
                                 <card.icon className={`w-6 h-6 mr-3 ${card.color}`} />
                                 <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">{card.title}</h3>
                             </div>
-                            <p className="text-3xl font-extrabold">{card.value}</p>
+                            <p className="text-3xl font-extrabold">{card.value}</p> 
                         </div>
                     ))}
                 </div>
@@ -827,10 +932,10 @@ const Navbar: React.FC<NavbarProps> = ({ currentPath, activePlayer, onNavigate }
                         </div>
 
                         <ProfileIconDisplay 
-                            gameName={activePlayer?.gameName || null} 
-                            tagLine={activePlayer?.tagLine || null} 
-                            onNavigate={onNavigate}
-                        />
+    gameName={activePlayer?.gameName || null} 
+    tagLine={activePlayer?.tagLine || null} 
+    onNavigate={onNavigate} // <- CORREGIDO: Se usa la variable 'onNavigate'
+/>
                     </div>
                 </div>
             </div>
