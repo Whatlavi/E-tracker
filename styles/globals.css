@@ -16,3 +16,6 @@ base, de componentes y de utilidades de Tailwind.
 body {
 @apply bg-gray-900 text-white font-sans;
 }
+*{
+    box-sizing: border-box;
+}
