@@ -91,11 +91,7 @@ const Home: React.FC = () => {
                 <script src="https://cdn.tailwindcss.com"></script>
             </Head>
             <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center p-4">
-                <header className="py-8 w-full max-w-4xl text-center">
-                    <h1 className="text-4xl font-extrabold text-blue-500">EliteGG Tracker 🎮</h1>
-                    <p className="mt-2 text-gray-400">Busca cualquier Riot ID (NombreDeJuego#TAG) para ver estadísticas de League of Legends.</p>
-                </header>
-
+               
                 <main className="w-full max-w-lg mb-12">
                     {/* Componente de la barra de búsqueda */}
                     <RiotIdSearchBar onSearch={handleSearch} loading={state.loading} />

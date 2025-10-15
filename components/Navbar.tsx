@@ -983,11 +983,14 @@ const App: React.FC = () => {
                 return null; 
             case 'home':
                 return (
-                    <div className="min-h-screen bg-gray-900 pt-20 flex flex-col items-center justify-center text-white p-4">
-                        <h1 className="text-5xl font-extrabold text-teal-400 mb-4">Bienvenido a Elitegg Tracker</h1>
-                        <p className="text-xl text-gray-300 mb-10 text-center">
-                            Busca un jugador por su <span className="font-mono bg-gray-800 p-1 rounded text-red-300">Riot ID#TAG</span> en la barra de navegación.
-                        </p>
+                    <div className="min-h-screen bg-gray-900 pt-0 flex flex-col items-center text-white"> 
+                          <div className="w-full h-[35rem] mb-0">
+                            <img
+                                src="/Campeones/Akali.png" // Ruta basada en public/campeones/akali.png
+                                alt="Akali"
+                                className="w-full h-full object-cover object-top opacity-60"  
+                                />                    
+                        </div>
                         <div className="lg:hidden">
                             <FunctionalSearchBar onSearch={(gn, tag) => navigate('profile', gn, tag)} loading={false} />
                         </div>
@@ -1004,7 +1007,6 @@ const App: React.FC = () => {
                 return <PlaceholderPage title="Página No Encontrada" />;
         }
     };
-
     return (
         <div className="min-h-screen bg-gray-900">
             <Navbar 
